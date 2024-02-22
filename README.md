@@ -25,7 +25,7 @@ Multimodal recommender systems utilize various types of information, such as tex
 ## 🌻 Quick Training
 
 As a **general gradient method** of recommender systems, MG can be applied to the training of various recommendation models. The code of this repository is based on [MMRec](https://github.com/enoche/MMRec), a modern multimodal recommendation toolbox, and the core code of MG is in [src/common/trainer.py](src/common/trainer.py#L166-L185). 
-<!-- We also integrate MG to the modern MultiModal Recommendation toolbox [MMRec](https://github.com/enoche/MMRec) -->
+We also integrate MG to the modern multimodal recommendation toolbox [MMRec](https://github.com/enoche/MMRec)
 
 (1) Clone the code. 
 
