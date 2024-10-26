@@ -26,11 +26,11 @@ class ItemKNNCBF(GeneralRecommender):
     def __init__(self, config, dataset):
         super(ItemKNNCBF, self).__init__(config, dataset)
 
-        self.knn_k = config['knn_k']
-        self.shrink = config['shrink']
+        self.knn_k = config["knn_k"]
+        self.shrink = config["shrink"]
 
         # load dataset info
-        interaction_matrix = dataset.inter_matrix(form='coo').astype(np.float32)
+        interaction_matrix = dataset.inter_matrix(form="coo").astype(np.float32)
         values = interaction_matrix.data
         indices = np.vstack((interaction_matrix.row, interaction_matrix.col))
 
@@ -61,7 +61,9 @@ class ItemKNNCBF(GeneralRecommender):
 
         # top-k
         knn_val, knn_ind = torch.topk(sim, self.knn_k, dim=-1)
-        weighted_adjacency_matrix = (torch.zeros_like(sim)).scatter_(-1, knn_ind, knn_val)
+        weighted_adjacency_matrix = (torch.zeros_like(sim)).scatter_(
+            -1, knn_ind, knn_val
+        )
         return weighted_adjacency_matrix
 
     def calculate_loss(self, interaction):
@@ -73,4 +75,3 @@ class ItemKNNCBF(GeneralRecommender):
         scores = self.scores_matrix[user]
 
         return scores
-

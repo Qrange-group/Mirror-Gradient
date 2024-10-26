@@ -18,18 +18,26 @@ import torch.nn.functional as F
 
 
 class VBPR(GeneralRecommender):
-    r"""BPR is a basic matrix factorization model that be trained in the pairwise way.
-    """
+    r"""BPR is a basic matrix factorization model that be trained in the pairwise way."""
+
     def __init__(self, config, dataloader):
         super(VBPR, self).__init__(config, dataloader)
 
         # load parameters info
-        self.u_embedding_size = self.i_embedding_size = config['embedding_size']
-        self.reg_weight = config['reg_weight']  # float32 type: the weight decay for l2 normalizaton
+        self.u_embedding_size = self.i_embedding_size = config["embedding_size"]
+        self.reg_weight = config[
+            "reg_weight"
+        ]  # float32 type: the weight decay for l2 normalizaton
 
         # define layers and loss
-        self.u_embedding = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_users, self.u_embedding_size * 2)))
-        self.i_embedding = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_items, self.i_embedding_size)))
+        self.u_embedding = nn.Parameter(
+            nn.init.xavier_uniform_(
+                torch.empty(self.n_users, self.u_embedding_size * 2)
+            )
+        )
+        self.i_embedding = nn.Parameter(
+            nn.init.xavier_uniform_(torch.empty(self.n_items, self.i_embedding_size))
+        )
         if self.v_feat is not None and self.t_feat is not None:
             self.item_raw_features = torch.cat((self.t_feat, self.v_feat), -1)
         elif self.v_feat is not None:
@@ -37,7 +45,9 @@ class VBPR(GeneralRecommender):
         else:
             self.item_raw_features = self.t_feat
 
-        self.item_linear = nn.Linear(self.item_raw_features.shape[1], self.i_embedding_size)
+        self.item_linear = nn.Linear(
+            self.item_raw_features.shape[1], self.i_embedding_size
+        )
         self.loss = BPRLoss()
         self.reg_loss = EmbLoss()
 
@@ -45,7 +55,7 @@ class VBPR(GeneralRecommender):
         self.apply(xavier_normal_initialization)
 
     def get_user_embedding(self, user):
-        r""" Get a batch of user embedding tensor according to input user's id.
+        r"""Get a batch of user embedding tensor according to input user's id.
 
         Args:
             user (torch.LongTensor): The input tensor that contains user's id, shape: [batch_size, ]
@@ -56,7 +66,7 @@ class VBPR(GeneralRecommender):
         return self.u_embedding[user, :]
 
     def get_item_embedding(self, item):
-        r""" Get a batch of item embedding tensor according to input item's id.
+        r"""Get a batch of item embedding tensor according to input item's id.
 
         Args:
             item (torch.LongTensor): The input tensor that contains item's id, shape: [batch_size, ]
@@ -89,9 +99,11 @@ class VBPR(GeneralRecommender):
         user_embeddings, item_embeddings = self.forward()
         user_e = user_embeddings[user, :]
         pos_e = item_embeddings[pos_item, :]
-        #neg_e = self.get_item_embedding(neg_item)
+        # neg_e = self.get_item_embedding(neg_item)
         neg_e = item_embeddings[neg_item, :]
-        pos_item_score, neg_item_score = torch.mul(user_e, pos_e).sum(dim=1), torch.mul(user_e, neg_e).sum(dim=1)
+        pos_item_score, neg_item_score = torch.mul(user_e, pos_e).sum(dim=1), torch.mul(
+            user_e, neg_e
+        ).sum(dim=1)
         mf_loss = self.loss(pos_item_score, neg_item_score)
         reg_loss = self.reg_loss(user_e, pos_e, neg_e)
         loss = mf_loss + self.reg_weight * reg_loss

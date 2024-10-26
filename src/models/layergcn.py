@@ -12,25 +12,33 @@ import torch.nn.functional as F
 from common.abstract_recommender import GeneralRecommender
 from common.loss import BPRLoss, EmbLoss, L2Loss
 
+
 class LayerGCN(GeneralRecommender):
     def __init__(self, config, dataset):
         super(LayerGCN, self).__init__(config, dataset)
 
         # load dataset info
-        self.interaction_matrix = dataset.inter_matrix(
-            form='coo').astype(np.float32)
+        self.interaction_matrix = dataset.inter_matrix(form="coo").astype(np.float32)
 
         # load parameters info
-        self.latent_dim = config['embedding_size']  # int type:the embedding size of lightGCN
-        self.n_layers = config['n_layers']  # int type:the layer num of lightGCN
-        self.reg_weight = config['reg_weight']  # float32 type: the weight decay for l2 normalizaton
-        self.dropout = config['dropout']
+        self.latent_dim = config[
+            "embedding_size"
+        ]  # int type:the embedding size of lightGCN
+        self.n_layers = config["n_layers"]  # int type:the layer num of lightGCN
+        self.reg_weight = config[
+            "reg_weight"
+        ]  # float32 type: the weight decay for l2 normalizaton
+        self.dropout = config["dropout"]
 
         self.n_nodes = self.n_users + self.n_items
 
         # define layers and loss
-        self.user_embeddings = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_users, self.latent_dim)))
-        self.item_embeddings = nn.Parameter(nn.init.xavier_uniform_(torch.empty(self.n_items, self.latent_dim)))
+        self.user_embeddings = nn.Parameter(
+            nn.init.xavier_uniform_(torch.empty(self.n_users, self.latent_dim))
+        )
+        self.item_embeddings = nn.Parameter(
+            nn.init.xavier_uniform_(torch.empty(self.n_items, self.latent_dim))
+        )
 
         # normalized adj matrix
         self.norm_adj_matrix = self.get_norm_adj_mat().to(self.device)
@@ -49,25 +57,33 @@ class LayerGCN(GeneralRecommender):
     #         return '=== Layer weights: {}'.format(F.softmax(self.layer_weights.exp(), dim=0))
 
     def pre_epoch_processing(self):
-        if self.dropout <= .0:
+        if self.dropout <= 0.0:
             self.masked_adj = self.norm_adj_matrix
             return
-        keep_len = int(self.edge_values.size(0) * (1. - self.dropout))
+        keep_len = int(self.edge_values.size(0) * (1.0 - self.dropout))
         if self.pruning_random:
             # pruning randomly
-            keep_idx = torch.tensor(random.sample(range(self.edge_values.size(0)), keep_len))
+            keep_idx = torch.tensor(
+                random.sample(range(self.edge_values.size(0)), keep_len)
+            )
         else:
             # pruning edges by pro
-            keep_idx = torch.multinomial(self.edge_values, keep_len)         # prune high-degree nodes
+            keep_idx = torch.multinomial(
+                self.edge_values, keep_len
+            )  # prune high-degree nodes
         self.pruning_random = True ^ self.pruning_random
         keep_indices = self.edge_indices[:, keep_idx]
         # norm values
-        keep_values = self._normalize_adj_m(keep_indices, torch.Size((self.n_users, self.n_items)))
+        keep_values = self._normalize_adj_m(
+            keep_indices, torch.Size((self.n_users, self.n_items))
+        )
         all_values = torch.cat((keep_values, keep_values))
         # update keep_indices to users/items+self.n_users
         keep_indices[1] += self.n_users
         all_indices = torch.cat((keep_indices, torch.flip(keep_indices, [0])), 1)
-        self.masked_adj = torch.sparse.FloatTensor(all_indices, all_values, self.norm_adj_matrix.shape).to(self.device)
+        self.masked_adj = torch.sparse.FloatTensor(
+            all_indices, all_values, self.norm_adj_matrix.shape
+        ).to(self.device)
 
     def _normalize_adj_m(self, indices, adj_size):
         adj = torch.sparse.FloatTensor(indices, torch.ones_like(indices[0]), adj_size)
@@ -89,14 +105,22 @@ class LayerGCN(GeneralRecommender):
         return edges, values
 
     def get_norm_adj_mat(self):
-        A = sp.dok_matrix((self.n_users + self.n_items,
-                           self.n_users + self.n_items), dtype=np.float32)
+        A = sp.dok_matrix(
+            (self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32
+        )
         inter_M = self.interaction_matrix
         inter_M_t = self.interaction_matrix.transpose()
-        data_dict = dict(zip(zip(inter_M.row, inter_M.col + self.n_users),
-                             [1] * inter_M.nnz))
-        data_dict.update(dict(zip(zip(inter_M_t.row + self.n_users, inter_M_t.col),
-                                  [1] * inter_M_t.nnz)))
+        data_dict = dict(
+            zip(zip(inter_M.row, inter_M.col + self.n_users), [1] * inter_M.nnz)
+        )
+        data_dict.update(
+            dict(
+                zip(
+                    zip(inter_M_t.row + self.n_users, inter_M_t.col),
+                    [1] * inter_M_t.nnz,
+                )
+            )
+        )
         A._update(data_dict)
         # norm adj matrix
         sumArr = (A > 0).sum(axis=1)
@@ -112,7 +136,9 @@ class LayerGCN(GeneralRecommender):
         i = torch.LongTensor([row, col])
         data = torch.FloatTensor(L.data)
 
-        return torch.sparse.FloatTensor(i, data, torch.Size((self.n_nodes, self.n_nodes)))
+        return torch.sparse.FloatTensor(
+            i, data, torch.Size((self.n_nodes, self.n_nodes))
+        )
 
     def get_ego_embeddings(self):
         r"""Get the embedding of users and items and combine to an embedding matrix.
@@ -130,11 +156,13 @@ class LayerGCN(GeneralRecommender):
         for layer_idx in range(self.n_layers):
             all_embeddings = torch.sparse.mm(self.forward_adj, all_embeddings)
             _weights = F.cosine_similarity(all_embeddings, ego_embeddings, dim=-1)
-            all_embeddings = torch.einsum('a,ab->ab', _weights, all_embeddings)
+            all_embeddings = torch.einsum("a,ab->ab", _weights, all_embeddings)
             embeddings_layers.append(all_embeddings)
 
         ui_all_embeddings = torch.sum(torch.stack(embeddings_layers, dim=0), dim=0)
-        user_all_embeddings, item_all_embeddings = torch.split(ui_all_embeddings, [self.n_users, self.n_items])
+        user_all_embeddings, item_all_embeddings = torch.split(
+            ui_all_embeddings, [self.n_users, self.n_items]
+        )
         return user_all_embeddings, item_all_embeddings
 
     def bpr_loss(self, u_embeddings, i_embeddings, user, pos_item, neg_item):
@@ -147,7 +175,7 @@ class LayerGCN(GeneralRecommender):
         neg_scores = torch.mul(u_embeddings, negi_embeddings).sum(dim=1)
         m = torch.nn.LogSigmoid()
         bpr_loss = torch.sum(-m(pos_scores - neg_scores))
-        #mf_loss = self.mf_loss(pos_scores, neg_scores)
+        # mf_loss = self.mf_loss(pos_scores, neg_scores)
 
         return bpr_loss
 
@@ -157,7 +185,9 @@ class LayerGCN(GeneralRecommender):
         posi_ego_embeddings = self.item_embeddings[pos_item]
         negi_ego_embeddings = self.item_embeddings[neg_item]
 
-        reg_loss = self.reg_loss(u_ego_embeddings, posi_ego_embeddings, negi_ego_embeddings)
+        reg_loss = self.reg_loss(
+            u_ego_embeddings, posi_ego_embeddings, negi_ego_embeddings
+        )
         return reg_loss
 
     def calculate_loss(self, interaction):
@@ -168,7 +198,9 @@ class LayerGCN(GeneralRecommender):
         self.forward_adj = self.masked_adj
         user_all_embeddings, item_all_embeddings = self.forward()
 
-        mf_loss = self.bpr_loss(user_all_embeddings, item_all_embeddings, user, pos_item, neg_item)
+        mf_loss = self.bpr_loss(
+            user_all_embeddings, item_all_embeddings, user, pos_item, neg_item
+        )
         reg_loss = self.emb_loss(user, pos_item, neg_item)
 
         loss = mf_loss + self.reg_weight * reg_loss
@@ -184,5 +216,3 @@ class LayerGCN(GeneralRecommender):
         # dot with all item embedding to accelerate
         scores = torch.matmul(u_embeddings, restore_item_e.transpose(0, 1))
         return scores
-
-

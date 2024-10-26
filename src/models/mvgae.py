@@ -28,34 +28,72 @@ class MVGAE(GeneralRecommender):
     def __init__(self, config, dataset):
         super(MVGAE, self).__init__(config, dataset)
         self.experts = ProductOfExperts()
-        #self.dataset = config['dataset']
-        self.dataset = 'amazon'
-        self.batch_size = config['train_batch_size']
+        # self.dataset = config['dataset']
+        self.dataset = "amazon"
+        self.batch_size = config["train_batch_size"]
         self.num_user = self.n_users
         self.num_item = self.n_items
         num_user = self.n_users
         num_item = self.n_items
-        num_layer = config['n_layers']
-        self.aggr_mode = 'mean'
+        num_layer = config["n_layers"]
+        self.aggr_mode = "mean"
         self.concate = False
-        self.dim_x = config['embedding_size']
-        self.beta = config['beta']
-        self.collaborative = nn.init.xavier_normal_(torch.rand((num_item, self.dim_x), requires_grad=True)).to(self.device)
+        self.dim_x = config["embedding_size"]
+        self.beta = config["beta"]
+        self.collaborative = nn.init.xavier_normal_(
+            torch.rand((num_item, self.dim_x), requires_grad=True)
+        ).to(self.device)
         # packing interaction in training into edge_index
-        train_interactions = dataset.inter_matrix(form='coo').astype(np.float32)
-        edge_index = torch.tensor(self.pack_edge_index(train_interactions), dtype=torch.long)
+        train_interactions = dataset.inter_matrix(form="coo").astype(np.float32)
+        edge_index = torch.tensor(
+            self.pack_edge_index(train_interactions), dtype=torch.long
+        )
         self.edge_index = edge_index.t().contiguous().to(self.device)
         self.edge_index = torch.cat((self.edge_index, self.edge_index[[1, 0]]), dim=1)
         if self.v_feat is not None:
-            self.v_gcn = GCN(self.device, self.v_feat, self.edge_index, self.batch_size, num_user, num_item, self.dim_x,
-                             self.aggr_mode, self.concate, num_layer=num_layer, dim_latent=128)  # 256)
+            self.v_gcn = GCN(
+                self.device,
+                self.v_feat,
+                self.edge_index,
+                self.batch_size,
+                num_user,
+                num_item,
+                self.dim_x,
+                self.aggr_mode,
+                self.concate,
+                num_layer=num_layer,
+                dim_latent=128,
+            )  # 256)
         if self.t_feat is not None:
-            self.t_gcn = GCN(self.device, self.t_feat, self.edge_index, self.batch_size, num_user, num_item, self.dim_x,
-                             self.aggr_mode, self.concate, num_layer=num_layer, dim_latent=128)  # 256)
-        self.c_gcn = GCN(self.device, self.collaborative, self.edge_index, self.batch_size, num_user, num_item,
-                         self.dim_x,
-                         self.aggr_mode, self.concate, num_layer=num_layer, dim_latent=128)  # 256)
-        self.result_embed = nn.init.xavier_normal_(torch.rand((num_user + num_item, self.dim_x))).to(self.device)
+            self.t_gcn = GCN(
+                self.device,
+                self.t_feat,
+                self.edge_index,
+                self.batch_size,
+                num_user,
+                num_item,
+                self.dim_x,
+                self.aggr_mode,
+                self.concate,
+                num_layer=num_layer,
+                dim_latent=128,
+            )  # 256)
+        self.c_gcn = GCN(
+            self.device,
+            self.collaborative,
+            self.edge_index,
+            self.batch_size,
+            num_user,
+            num_item,
+            self.dim_x,
+            self.aggr_mode,
+            self.concate,
+            num_layer=num_layer,
+            dim_latent=128,
+        )  # 256)
+        self.result_embed = nn.init.xavier_normal_(
+            torch.rand((num_user + num_item, self.dim_x))
+        ).to(self.device)
 
     def pack_edge_index(self, inter_mat):
         rows = inter_mat.row
@@ -112,7 +150,7 @@ class MVGAE(GeneralRecommender):
         z = self.reparametrize(pd_mu, pd_logvar)
 
         # for more sparse dataset like amazon, use signoid to regulization. for alishop,dont use sigmoid for better results
-        if 'amazon' in self.dataset:
+        if "amazon" in self.dataset:
             self.result_embed = torch.sigmoid(pd_mu)
         else:
             self.result_embed = pd_mu
@@ -127,7 +165,7 @@ class MVGAE(GeneralRecommender):
             pos_edge_index (LongTensor): The positive edges to train against.
         """
         # for more sparse dataset like amazon, use signoid to regulization. for alishop,dont use sigmoid for better results
-        if 'amazon' in self.dataset:
+        if "amazon" in self.dataset:
             z = torch.sigmoid(z)
 
         pos_scores = self.dot_product_decode(z, pos_edge_index, sigmoid=True)
@@ -147,18 +185,19 @@ class MVGAE(GeneralRecommender):
                 computation of :math:`\log\sigma^2`.(default: :obj:`None`)
         """
         logvar = logvar.clamp(max=MAX_LOGVAR)
-        return -0.5 * torch.mean(
-            torch.sum(1 + logvar - mu ** 2 - logvar.exp(), dim=1))
+        return -0.5 * torch.mean(torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1))
 
     def calculate_loss(self, interaction):
         user = interaction[0]
         pos_items = interaction[1]
         neg_items = interaction[2]
-        #user = user.long()
-        #pos_items = pos_items.long()
-        #neg_items = torch.tensor(neg_items, dtype=torch.long)
+        # user = user.long()
+        # pos_items = pos_items.long()
+        # neg_items = torch.tensor(neg_items, dtype=torch.long)
         pos_edge_index = torch.stack([user, pos_items], dim=0)
-        pd_mu, pd_logvar, z, v_mu, v_logvar, t_mu, t_logvar, c_mu, c_logvar = self.forward()
+        pd_mu, pd_logvar, z, v_mu, v_logvar, t_mu, t_logvar, c_mu, c_logvar = (
+            self.forward()
+        )
 
         z_v = self.reparametrize(v_mu, v_logvar)
         z_t = self.reparametrize(t_mu, t_logvar)
@@ -166,14 +205,20 @@ class MVGAE(GeneralRecommender):
         recon_loss = self.recon_loss(z, pos_edge_index, user, neg_items)
         kl_loss = self.kl_loss(pd_mu, pd_logvar)
         loss_multi = recon_loss + self.beta * kl_loss
-        loss_v = self.recon_loss(z_v, pos_edge_index, user, neg_items) + self.beta * self.kl_loss(v_mu, v_logvar)
-        loss_t = self.recon_loss(z_t, pos_edge_index, user, neg_items) + self.beta * self.kl_loss(t_mu, t_logvar)
-        loss_c = self.recon_loss(z_c, pos_edge_index, user, neg_items) + self.beta* self.kl_loss(c_mu, c_logvar)
+        loss_v = self.recon_loss(
+            z_v, pos_edge_index, user, neg_items
+        ) + self.beta * self.kl_loss(v_mu, v_logvar)
+        loss_t = self.recon_loss(
+            z_t, pos_edge_index, user, neg_items
+        ) + self.beta * self.kl_loss(t_mu, t_logvar)
+        loss_c = self.recon_loss(
+            z_c, pos_edge_index, user, neg_items
+        ) + self.beta * self.kl_loss(c_mu, c_logvar)
         return loss_multi + loss_v + loss_t + loss_c
 
     def full_sort_predict(self, interaction):
-        user_tensor = self.result_embed[:self.n_users]
-        item_tensor = self.result_embed[self.n_users:]
+        user_tensor = self.result_embed[: self.n_users]
+        item_tensor = self.result_embed[self.n_users :]
 
         temp_user_tensor = user_tensor[interaction[0], :]
         score_matrix = torch.matmul(temp_user_tensor, item_tensor.t())
@@ -181,8 +226,20 @@ class MVGAE(GeneralRecommender):
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, device, features, edge_index, batch_size, num_user, num_item, dim_id, aggr_mode, concate,
-                 num_layer, dim_latent=None):
+    def __init__(
+        self,
+        device,
+        features,
+        edge_index,
+        batch_size,
+        num_user,
+        num_item,
+        dim_id,
+        aggr_mode,
+        concate,
+        num_layer,
+        dim_latent=None,
+    ):
         super(GCN, self).__init__()
         self.device = device
         self.batch_size = batch_size
@@ -198,50 +255,71 @@ class GCN(torch.nn.Module):
         self.num_layer = num_layer
 
         if self.dim_latent:
-            self.preference = nn.init.xavier_normal_(torch.rand((num_user, self.dim_latent), requires_grad=True)).to(
-                self.device)
+            self.preference = nn.init.xavier_normal_(
+                torch.rand((num_user, self.dim_latent), requires_grad=True)
+            ).to(self.device)
             self.MLP = nn.Linear(self.dim_feat, self.dim_latent)
             nn.init.xavier_normal_(self.MLP.weight)
-            self.conv_embed_1 = BaseModel(self.dim_latent, self.dim_id, aggr=self.aggr_mode)
+            self.conv_embed_1 = BaseModel(
+                self.dim_latent, self.dim_id, aggr=self.aggr_mode
+            )
             nn.init.xavier_normal_(self.conv_embed_1.weight)
             self.linear_layer1 = nn.Linear(self.dim_latent, self.dim_id)
             nn.init.xavier_normal_(self.linear_layer1.weight)
-            self.g_layer1 = nn.Linear(self.dim_id + self.dim_id, self.dim_id) if self.concate else nn.Linear(
-                self.dim_id, self.dim_id)
+            self.g_layer1 = (
+                nn.Linear(self.dim_id + self.dim_id, self.dim_id)
+                if self.concate
+                else nn.Linear(self.dim_id, self.dim_id)
+            )
             nn.init.xavier_normal_(self.g_layer1.weight)
 
         else:
-            self.preference = nn.init.xavier_normal_(torch.rand((num_user, self.dim_feat), requires_grad=True)).to(
-                self.device)
-            self.conv_embed_1 = BaseModel(self.dim_feat, self.dim_id, aggr=self.aggr_mode)
+            self.preference = nn.init.xavier_normal_(
+                torch.rand((num_user, self.dim_feat), requires_grad=True)
+            ).to(self.device)
+            self.conv_embed_1 = BaseModel(
+                self.dim_feat, self.dim_id, aggr=self.aggr_mode
+            )
             nn.init.xavier_normal_(self.conv_embed_1.weight)
             self.linear_layer1 = nn.Linear(self.dim_feat, self.dim_id)
             nn.init.xavier_normal_(self.linear_layer1.weight)
-            self.g_layer1 = nn.Linear(self.dim_feat + self.dim_id, self.dim_id) if self.concate else nn.Linear(
-                self.dim_id, self.dim_id)
+            self.g_layer1 = (
+                nn.Linear(self.dim_feat + self.dim_id, self.dim_id)
+                if self.concate
+                else nn.Linear(self.dim_id, self.dim_id)
+            )
             nn.init.xavier_normal_(self.g_layer1.weight)
 
         self.conv_embed_2 = BaseModel(self.dim_id, self.dim_id, aggr=self.aggr_mode)
         nn.init.xavier_normal_(self.conv_embed_2.weight)
         self.linear_layer2 = nn.Linear(self.dim_id, self.dim_id)
         nn.init.xavier_normal_(self.linear_layer2.weight)
-        self.g_layer2 = nn.Linear(self.dim_id + self.dim_id, self.dim_id) if self.concate else nn.Linear(self.dim_id,
-                                                                                                         self.dim_id)
+        self.g_layer2 = (
+            nn.Linear(self.dim_id + self.dim_id, self.dim_id)
+            if self.concate
+            else nn.Linear(self.dim_id, self.dim_id)
+        )
         # nn.init.xavier_normal_(self.g_layer2.weight)
 
         self.conv_embed_4 = BaseModel(self.dim_id, self.dim_id, aggr=self.aggr_mode)
         nn.init.xavier_normal_(self.conv_embed_4.weight)
         self.linear_layer4 = nn.Linear(self.dim_id, self.dim_id)
         nn.init.xavier_normal_(self.linear_layer4.weight)
-        self.g_layer4 = nn.Linear(self.dim_id + self.dim_id, self.dim_id) if self.concate else nn.Linear(self.dim_id,
-                                                                                                         self.dim_id)
+        self.g_layer4 = (
+            nn.Linear(self.dim_id + self.dim_id, self.dim_id)
+            if self.concate
+            else nn.Linear(self.dim_id, self.dim_id)
+        )
         nn.init.xavier_normal_(self.g_layer4.weight)
         self.conv_embed_5 = BaseModel(self.dim_id, self.dim_id, aggr=self.aggr_mode)
         nn.init.xavier_normal_(self.conv_embed_5.weight)
         self.linear_layer5 = nn.Linear(self.dim_id, self.dim_id)
         nn.init.xavier_normal_(self.linear_layer5.weight)
-        self.g_layer5 = nn.Linear(self.dim_id + self.dim_id, self.dim_id) if self.concate else nn.Linear(self.dim_id,
-                                                                                                         self.dim_id)
+        self.g_layer5 = (
+            nn.Linear(self.dim_id + self.dim_id, self.dim_id)
+            if self.concate
+            else nn.Linear(self.dim_id, self.dim_id)
+        )
         nn.init.xavier_normal_(self.g_layer5.weight)
 
     def forward(self):
@@ -257,27 +335,41 @@ class GCN(torch.nn.Module):
         if self.num_layer > 0:
             h = F.leaky_relu(self.conv_embed_1(x, self.edge_index))
             x_hat = F.leaky_relu(self.linear_layer1(x))
-            x = F.leaky_relu(self.g_layer1(torch.cat((h, x_hat), dim=1))) if self.concate else F.leaky_relu(
-                self.g_layer1(h))
+            x = (
+                F.leaky_relu(self.g_layer1(torch.cat((h, x_hat), dim=1)))
+                if self.concate
+                else F.leaky_relu(self.g_layer1(h))
+            )
             del x_hat
             del h
 
         if self.num_layer > 1:
             h = F.leaky_relu(self.conv_embed_2(x, self.edge_index))
             x_hat = F.leaky_relu(self.linear_layer2(x))
-            x = F.leaky_relu(self.g_layer2(torch.cat((h, x_hat), dim=1))) if self.concate else F.leaky_relu(
-                self.g_layer2(h))
+            x = (
+                F.leaky_relu(self.g_layer2(torch.cat((h, x_hat), dim=1)))
+                if self.concate
+                else F.leaky_relu(self.g_layer2(h))
+            )
             del h
             del x_hat
 
         mu = F.leaky_relu(self.conv_embed_4(x, self.edge_index))
         x_hat = F.leaky_relu(self.linear_layer4(x))
-        mu = self.g_layer4(torch.cat((mu, x_hat), dim=1)) if self.concate else self.g_layer4(mu) + x_hat
+        mu = (
+            self.g_layer4(torch.cat((mu, x_hat), dim=1))
+            if self.concate
+            else self.g_layer4(mu) + x_hat
+        )
         del x_hat
 
         logvar = F.leaky_relu(self.conv_embed_5(x, self.edge_index))
         x_hat = F.leaky_relu(self.linear_layer5(x))
-        logvar = self.g_layer5(torch.cat((logvar, x_hat), dim=1)) if self.concate else self.g_layer5(logvar) + x_hat
+        logvar = (
+            self.g_layer5(torch.cat((logvar, x_hat), dim=1))
+            if self.concate
+            else self.g_layer5(logvar) + x_hat
+        )
         del x_hat
         return mu, logvar
 
@@ -294,15 +386,17 @@ class ProductOfExperts(torch.nn.Module):
     def forward(self, mu, logvar, eps=1e-8):
         var = torch.exp(logvar) + eps
         # precision of i-th Gaussian expert at point x
-        T = 1. / var
+        T = 1.0 / var
         pd_mu = torch.sum(mu * T, dim=0) / torch.sum(T, dim=0)
-        pd_var = 1. / torch.sum(T, dim=0)
+        pd_var = 1.0 / torch.sum(T, dim=0)
         pd_logvar = torch.log(pd_var)
         return pd_mu, pd_logvar, pd_var
 
 
 class BaseModel(MessagePassing):
-    def __init__(self, in_channels, out_channels, normalize=True, bias=True, aggr='add', **kwargs):
+    def __init__(
+        self, in_channels, out_channels, normalize=True, bias=True, aggr="add", **kwargs
+    ):
         super(BaseModel, self).__init__(aggr=aggr, **kwargs)
         self.aggr = aggr
         self.in_channels = in_channels
@@ -312,7 +406,7 @@ class BaseModel(MessagePassing):
         if bias:
             self.bias = Parameter(torch.Tensor(out_channels))
         else:
-            self.register_parameter('bias', None)
+            self.register_parameter("bias", None)
         self.reset_parameters()
 
     def reset_parameters(self):
@@ -329,7 +423,7 @@ class BaseModel(MessagePassing):
         return self.propagate(edge_index, size=(x.size(0), x.size(0)), x=x)
 
     def message(self, x_j, edge_index, size):
-        if self.aggr == 'add':
+        if self.aggr == "add":
             row, col = edge_index
             deg = degree(row, size[0], dtype=x_j.dtype)
             deg_inv_sqrt = deg.pow(-0.5)
@@ -345,4 +439,6 @@ class BaseModel(MessagePassing):
         return F.dropout(aggr_out, p=0.1, training=self.training)
 
     def __repr(self):
-        return '{}({},{})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
+        return "{}({},{})".format(
+            self.__class__.__name__, self.in_channels, self.out_channels
+        )

@@ -30,9 +30,9 @@ class SELFCFED_LGN(GeneralRecommender):
         super(SELFCFED_LGN, self).__init__(config, dataset)
         self.user_count = self.n_users
         self.item_count = self.n_items
-        self.latent_size = config['embedding_size']
-        self.dropout = config['dropout']
-        self.reg_weight = config['reg_weight']
+        self.latent_size = config["embedding_size"]
+        self.dropout = config["dropout"]
+        self.reg_weight = config["reg_weight"]
 
         self.online_encoder = LightGCN_Encoder(config, dataset)
         self.predictor = nn.Linear(self.latent_size, self.latent_size)
@@ -55,7 +55,7 @@ class SELFCFED_LGN(GeneralRecommender):
         return self.predictor(u_online), u_online, self.predictor(i_online), i_online
 
     def loss_fn(self, p, z):  # negative cosine similarity
-        return - F.cosine_similarity(p, z.detach(), dim=-1).mean()
+        return -F.cosine_similarity(p, z.detach(), dim=-1).mean()
 
     def calculate_loss(self, interaction):
         u_online, u_target, i_online, i_target = self.forward(interaction)
@@ -63,8 +63,8 @@ class SELFCFED_LGN(GeneralRecommender):
 
         u_online, i_online = self.predictor(u_online), self.predictor(i_online)
 
-        loss_ui = self.loss_fn(u_online, i_target)/2
-        loss_iu = self.loss_fn(i_online, u_target)/2
+        loss_ui = self.loss_fn(u_online, i_target) / 2
+        loss_iu = self.loss_fn(i_online, u_target) / 2
 
         return loss_ui + loss_iu + self.reg_weight * reg_loss
 

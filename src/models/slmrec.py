@@ -17,10 +17,11 @@ from common.abstract_recommender import GeneralRecommender
 ## Only visual + text features
 ##
 
+
 class SLMRec(GeneralRecommender):
     def __init__(self, config, dataset):
         super(SLMRec, self).__init__(config, dataset)
-        self.a_feat = None      # no audio feature
+        self.a_feat = None  # no audio feature
         self.config = config
         self.infonce_criterion = nn.CrossEntropyLoss()
         self.__init_weight(dataset)
@@ -28,19 +29,21 @@ class SLMRec(GeneralRecommender):
     def __init_weight(self, dataset):
         self.num_users = self.n_users
         self.num_items = self.n_items
-        self.latent_dim = self.config['recdim']
-        self.n_layers = self.config['layer_num']
-        self.mm_fusion_mode = self.config['mm_fusion_mode']
-        self.temp = self.config['temp']
+        self.latent_dim = self.config["recdim"]
+        self.n_layers = self.config["layer_num"]
+        self.mm_fusion_mode = self.config["mm_fusion_mode"]
+        self.temp = self.config["temp"]
 
         self.create_u_embeding_i()
 
         self.all_items = self.all_users = None
 
-        train_interactions = dataset.inter_matrix(form='csr').astype(np.float32)
+        train_interactions = dataset.inter_matrix(form="csr").astype(np.float32)
         coo = self.create_adj_mat(train_interactions).tocoo()
         indices = torch.LongTensor([coo.row.tolist(), coo.col.tolist()])
-        self.norm_adj = torch.sparse.FloatTensor(indices, torch.FloatTensor(coo.data), coo.shape)
+        self.norm_adj = torch.sparse.FloatTensor(
+            indices, torch.FloatTensor(coo.data), coo.shape
+        )
         self.norm_adj = self.norm_adj.to(self.device)
         self.f = nn.Sigmoid()
 
@@ -94,26 +97,40 @@ class SLMRec(GeneralRecommender):
             return light_out
 
         self.i_emb = compute_graph(users_emb, items_emb)
-        self.i_emb_u, self.i_emb_i = torch.split(self.i_emb, [self.num_users, self.num_items])
+        self.i_emb_u, self.i_emb_i = torch.split(
+            self.i_emb, [self.num_users, self.num_items]
+        )
         self.v_emb = compute_graph(users_emb, self.v_dense_emb)
-        self.v_emb_u, self.v_emb_i = torch.split(self.v_emb, [self.num_users, self.num_items])
+        self.v_emb_u, self.v_emb_i = torch.split(
+            self.v_emb, [self.num_users, self.num_items]
+        )
         if self.config["dataset"] != "kwai":
             if self.a_feat is not None:
                 self.a_emb = compute_graph(users_emb, self.a_dense_emb)
-                self.a_emb_u, self.a_emb_i = torch.split(self.a_emb, [self.num_users, self.num_items])
+                self.a_emb_u, self.a_emb_i = torch.split(
+                    self.a_emb, [self.num_users, self.num_items]
+                )
             if self.t_feat is not None:
                 self.t_emb = compute_graph(users_emb, self.t_dense_emb)
-                self.t_emb_u, self.t_emb_i = torch.split(self.t_emb, [self.num_users, self.num_items])
+                self.t_emb_u, self.t_emb_i = torch.split(
+                    self.t_emb, [self.num_users, self.num_items]
+                )
 
         # multi - modal features fusion
         if self.config["dataset"] == "kwai":
             user = self.embedding_user_after_GCN(
-                self.mm_fusion([self.i_emb_u, self.v_emb_u]))
+                self.mm_fusion([self.i_emb_u, self.v_emb_u])
+            )
             item = self.embedding_item_after_GCN(
-                self.mm_fusion([self.i_emb_i, self.v_emb_i]))
+                self.mm_fusion([self.i_emb_i, self.v_emb_i])
+            )
         else:
-            user = self.embedding_user_after_GCN(self.mm_fusion([self.i_emb_u, self.v_emb_u, self.t_emb_u]))
-            item = self.embedding_item_after_GCN(self.mm_fusion([self.i_emb_i, self.v_emb_i, self.t_emb_i]))
+            user = self.embedding_user_after_GCN(
+                self.mm_fusion([self.i_emb_u, self.v_emb_u, self.t_emb_u])
+            )
+            item = self.embedding_item_after_GCN(
+                self.mm_fusion([self.i_emb_i, self.v_emb_i, self.t_emb_i])
+            )
 
         return user, item
 
@@ -147,30 +164,67 @@ class SLMRec(GeneralRecommender):
             light_out_sub_1 = torch.mean(embs_sub_1, dim=1)
             light_out_sub_2 = torch.mean(embs_sub_2, dim=1)
 
-            users_sub_1, items_sub_1 = torch.split(light_out_sub_1, [self.num_users, self.num_items])
-            users_sub_2, items_sub_2 = torch.split(light_out_sub_2, [self.num_users, self.num_items])
-            return users_sub_1[users_idx], items_sub_1[items_idx], users_sub_2[users_idx], items_sub_2[items_idx]
+            users_sub_1, items_sub_1 = torch.split(
+                light_out_sub_1, [self.num_users, self.num_items]
+            )
+            users_sub_2, items_sub_2 = torch.split(
+                light_out_sub_2, [self.num_users, self.num_items]
+            )
+            return (
+                users_sub_1[users_idx],
+                items_sub_1[items_idx],
+                users_sub_2[users_idx],
+                items_sub_2[items_idx],
+            )
 
-        i_emb_u_sub_1, i_emb_i_sub_1, i_emb_u_sub_2, i_emb_i_sub_2 = compute_graph(users_emb, items_emb)
-        v_emb_u_sub_1, v_emb_i_sub_1, v_emb_u_sub_2, v_emb_i_sub_2 = compute_graph(users_emb, v_dense)
+        i_emb_u_sub_1, i_emb_i_sub_1, i_emb_u_sub_2, i_emb_i_sub_2 = compute_graph(
+            users_emb, items_emb
+        )
+        v_emb_u_sub_1, v_emb_i_sub_1, v_emb_u_sub_2, v_emb_i_sub_2 = compute_graph(
+            users_emb, v_dense
+        )
         if self.config["data.input.dataset"] != "kwai":
-            a_emb_u_sub_1, a_emb_i_sub_1, a_emb_u_sub_2, a_emb_i_sub_2 = compute_graph(users_emb, a_dense)
-            t_emb_u_sub_1, t_emb_i_sub_1, t_emb_u_sub_2, t_emb_i_sub_2 = compute_graph(users_emb, t_dense)
+            a_emb_u_sub_1, a_emb_i_sub_1, a_emb_u_sub_2, a_emb_i_sub_2 = compute_graph(
+                users_emb, a_dense
+            )
+            t_emb_u_sub_1, t_emb_i_sub_1, t_emb_u_sub_2, t_emb_i_sub_2 = compute_graph(
+                users_emb, t_dense
+            )
 
         if self.config["data.input.dataset"] == "kwai":
-            users_sub_1 = self.embedding_user_after_GCN(self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1]))
-            items_sub_1 = self.embedding_item_after_GCN(self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1]))
-            users_sub_2 = self.embedding_user_after_GCN(self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2]))
-            items_sub_2 = self.embedding_item_after_GCN(self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2]))
+            users_sub_1 = self.embedding_user_after_GCN(
+                self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1])
+            )
+            items_sub_1 = self.embedding_item_after_GCN(
+                self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1])
+            )
+            users_sub_2 = self.embedding_user_after_GCN(
+                self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2])
+            )
+            items_sub_2 = self.embedding_item_after_GCN(
+                self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2])
+            )
         else:
             users_sub_1 = self.embedding_user_after_GCN(
-                self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1, a_emb_u_sub_1, t_emb_u_sub_1]))
+                self.mm_fusion(
+                    [i_emb_u_sub_1, v_emb_u_sub_1, a_emb_u_sub_1, t_emb_u_sub_1]
+                )
+            )
             items_sub_1 = self.embedding_item_after_GCN(
-                self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1, a_emb_i_sub_1, t_emb_i_sub_1]))
+                self.mm_fusion(
+                    [i_emb_i_sub_1, v_emb_i_sub_1, a_emb_i_sub_1, t_emb_i_sub_1]
+                )
+            )
             users_sub_2 = self.embedding_user_after_GCN(
-                self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2, a_emb_u_sub_2, t_emb_u_sub_2]))
+                self.mm_fusion(
+                    [i_emb_u_sub_2, v_emb_u_sub_2, a_emb_u_sub_2, t_emb_u_sub_2]
+                )
+            )
             items_sub_2 = self.embedding_item_after_GCN(
-                self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2, a_emb_i_sub_2, t_emb_i_sub_2]))
+                self.mm_fusion(
+                    [i_emb_i_sub_2, v_emb_i_sub_2, a_emb_i_sub_2, t_emb_i_sub_2]
+                )
+            )
 
         users_sub_1 = torch.nn.functional.normalize(users_sub_1, dim=1)
         users_sub_2 = torch.nn.functional.normalize(users_sub_2, dim=1)
@@ -207,12 +261,30 @@ class SLMRec(GeneralRecommender):
             t_dense = self.t_dense_emb
 
         def compute_graph(u_emb, i_emb, idx):
-            all_emb_1 = torch.cat([u_emb,
-                                   i_emb if rand_idx1 != idx else torch.zeros((self.num_items, self.latent_dim)).to(
-                                       self.device)])
-            all_emb_2 = torch.cat([u_emb,
-                                   i_emb if rand_idx2 != idx else torch.zeros((self.num_items, self.latent_dim)).to(
-                                       self.device)])
+            all_emb_1 = torch.cat(
+                [
+                    u_emb,
+                    (
+                        i_emb
+                        if rand_idx1 != idx
+                        else torch.zeros((self.num_items, self.latent_dim)).to(
+                            self.device
+                        )
+                    ),
+                ]
+            )
+            all_emb_2 = torch.cat(
+                [
+                    u_emb,
+                    (
+                        i_emb
+                        if rand_idx2 != idx
+                        else torch.zeros((self.num_items, self.latent_dim)).to(
+                            self.device
+                        )
+                    ),
+                ]
+            )
             ego_emb_sub_1 = all_emb_1
             ego_emb_sub_2 = all_emb_2
             embs_sub_1 = [ego_emb_sub_1]
@@ -233,30 +305,67 @@ class SLMRec(GeneralRecommender):
             light_out_sub_1 = torch.mean(embs_sub_1, dim=1)
             light_out_sub_2 = torch.mean(embs_sub_2, dim=1)
 
-            users_sub_1, items_sub_1 = torch.split(light_out_sub_1, [self.num_users, self.num_items])
-            users_sub_2, items_sub_2 = torch.split(light_out_sub_2, [self.num_users, self.num_items])
-            return users_sub_1[users_idx], items_sub_1[items_idx], users_sub_2[users_idx], items_sub_2[items_idx]
+            users_sub_1, items_sub_1 = torch.split(
+                light_out_sub_1, [self.num_users, self.num_items]
+            )
+            users_sub_2, items_sub_2 = torch.split(
+                light_out_sub_2, [self.num_users, self.num_items]
+            )
+            return (
+                users_sub_1[users_idx],
+                items_sub_1[items_idx],
+                users_sub_2[users_idx],
+                items_sub_2[items_idx],
+            )
 
-        i_emb_u_sub_1, i_emb_i_sub_1, i_emb_u_sub_2, i_emb_i_sub_2 = compute_graph(users_emb, items_emb, idx=3)
-        v_emb_u_sub_1, v_emb_i_sub_1, v_emb_u_sub_2, v_emb_i_sub_2 = compute_graph(users_emb, v_dense, idx=0)
+        i_emb_u_sub_1, i_emb_i_sub_1, i_emb_u_sub_2, i_emb_i_sub_2 = compute_graph(
+            users_emb, items_emb, idx=3
+        )
+        v_emb_u_sub_1, v_emb_i_sub_1, v_emb_u_sub_2, v_emb_i_sub_2 = compute_graph(
+            users_emb, v_dense, idx=0
+        )
         if self.config["data.input.dataset"] != "kwai":
-            a_emb_u_sub_1, a_emb_i_sub_1, a_emb_u_sub_2, a_emb_i_sub_2 = compute_graph(users_emb, a_dense, idx=1)
-            t_emb_u_sub_1, t_emb_i_sub_1, t_emb_u_sub_2, t_emb_i_sub_2 = compute_graph(users_emb, t_dense, idx=2)
+            a_emb_u_sub_1, a_emb_i_sub_1, a_emb_u_sub_2, a_emb_i_sub_2 = compute_graph(
+                users_emb, a_dense, idx=1
+            )
+            t_emb_u_sub_1, t_emb_i_sub_1, t_emb_u_sub_2, t_emb_i_sub_2 = compute_graph(
+                users_emb, t_dense, idx=2
+            )
 
         if self.config["data.input.dataset"] == "kwai":
-            users_sub_1 = self.embedding_user_after_GCN(self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1]))
-            items_sub_1 = self.embedding_item_after_GCN(self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1]))
-            users_sub_2 = self.embedding_user_after_GCN(self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2]))
-            items_sub_2 = self.embedding_item_after_GCN(self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2]))
+            users_sub_1 = self.embedding_user_after_GCN(
+                self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1])
+            )
+            items_sub_1 = self.embedding_item_after_GCN(
+                self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1])
+            )
+            users_sub_2 = self.embedding_user_after_GCN(
+                self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2])
+            )
+            items_sub_2 = self.embedding_item_after_GCN(
+                self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2])
+            )
         else:
             users_sub_1 = self.embedding_user_after_GCN(
-                self.mm_fusion([i_emb_u_sub_1, v_emb_u_sub_1, a_emb_u_sub_1, t_emb_u_sub_1]))
+                self.mm_fusion(
+                    [i_emb_u_sub_1, v_emb_u_sub_1, a_emb_u_sub_1, t_emb_u_sub_1]
+                )
+            )
             items_sub_1 = self.embedding_item_after_GCN(
-                self.mm_fusion([i_emb_i_sub_1, v_emb_i_sub_1, a_emb_i_sub_1, t_emb_i_sub_1]))
+                self.mm_fusion(
+                    [i_emb_i_sub_1, v_emb_i_sub_1, a_emb_i_sub_1, t_emb_i_sub_1]
+                )
+            )
             users_sub_2 = self.embedding_user_after_GCN(
-                self.mm_fusion([i_emb_u_sub_2, v_emb_u_sub_2, a_emb_u_sub_2, t_emb_u_sub_2]))
+                self.mm_fusion(
+                    [i_emb_u_sub_2, v_emb_u_sub_2, a_emb_u_sub_2, t_emb_u_sub_2]
+                )
+            )
             items_sub_2 = self.embedding_item_after_GCN(
-                self.mm_fusion([i_emb_i_sub_2, v_emb_i_sub_2, a_emb_i_sub_2, t_emb_i_sub_2]))
+                self.mm_fusion(
+                    [i_emb_i_sub_2, v_emb_i_sub_2, a_emb_i_sub_2, t_emb_i_sub_2]
+                )
+            )
 
         users_sub_1 = torch.nn.functional.normalize(users_sub_1, dim=1)
         users_sub_2 = torch.nn.functional.normalize(users_sub_2, dim=1)
@@ -299,7 +408,7 @@ class SLMRec(GeneralRecommender):
             t_labels = torch.tensor(list(range(x_iva_ivat.shape[0]))).to(self.device)
             t_loss = self.infonce_criterion(t_logits, t_labels)
 
-            #return v_loss + a_loss + t_loss
+            # return v_loss + a_loss + t_loss
             return v_loss + t_loss
         else:
             return v_loss
@@ -310,7 +419,9 @@ class SLMRec(GeneralRecommender):
         if candidate_items is None:
             items_emb = self.all_items
         else:
-            items_emb = self.all_items[torch.tensor(candidate_items).long().to(self.device)]
+            items_emb = self.all_items[
+                torch.tensor(candidate_items).long().to(self.device)
+            ]
         scores = torch.matmul(users_emb, items_emb.t())
         return self.f(scores)
 
@@ -334,7 +445,7 @@ class SLMRec(GeneralRecommender):
         users, pos = interaction[0], interaction[1]
         main_loss = self.infonce(users, pos)
         ssl_loss = self.compute_ssl(users, pos)
-        return main_loss + self.config['ssl_alpha'] * ssl_loss
+        return main_loss + self.config["ssl_alpha"] * ssl_loss
 
     def ssl_loss(self, users, pos):
         # compute ssl loss
@@ -367,8 +478,9 @@ class SLMRec(GeneralRecommender):
         return z
 
     def infonce(self, users, pos):
-        (users_emb, pos_emb, neg_emb,
-         userEmb0, posEmb0, negEmb0) = self.getEmbedding(users.long(), pos.long(), None)
+        (users_emb, pos_emb, neg_emb, userEmb0, posEmb0, negEmb0) = self.getEmbedding(
+            users.long(), pos.long(), None
+        )
         users_emb = torch.nn.functional.normalize(users_emb, dim=1)
         pos_emb = torch.nn.functional.normalize(pos_emb, dim=1)
         logits = torch.mm(users_emb, pos_emb.T)
@@ -378,8 +490,12 @@ class SLMRec(GeneralRecommender):
         return self.infonce_criterion(logits, labels)
 
     def create_u_embeding_i(self):
-        self.embedding_user = torch.nn.Embedding(num_embeddings=self.num_users, embedding_dim=self.latent_dim)
-        self.embedding_item = torch.nn.Embedding(num_embeddings=self.num_items, embedding_dim=self.latent_dim)
+        self.embedding_user = torch.nn.Embedding(
+            num_embeddings=self.num_users, embedding_dim=self.latent_dim
+        )
+        self.embedding_item = torch.nn.Embedding(
+            num_embeddings=self.num_items, embedding_dim=self.latent_dim
+        )
 
         if self.config["init"] == "xavier":
             nn.init.xavier_uniform_(self.embedding_user.weight, gain=1)
@@ -438,43 +554,46 @@ class SLMRec(GeneralRecommender):
         # item_np = np.array(item_list, dtype=np.int32)
         ratings = np.ones_like(user_np, dtype=np.float32)
         n_nodes = self.num_users + self.num_items
-        tmp_adj = sp.csr_matrix((ratings, (user_np, item_np + self.num_users)), shape=(n_nodes, n_nodes))
+        tmp_adj = sp.csr_matrix(
+            (ratings, (user_np, item_np + self.num_users)), shape=(n_nodes, n_nodes)
+        )
         adj_mat = tmp_adj + tmp_adj.T
 
         def normalized_adj_single(adj):
             rowsum = np.array(adj.sum(1))
             d_inv = np.power(rowsum, -1).flatten()
-            d_inv[np.isinf(d_inv)] = 0.
+            d_inv[np.isinf(d_inv)] = 0.0
             d_mat_inv = sp.diags(d_inv)
 
             norm_adj = d_mat_inv.dot(adj)
-            print('generate single-normalized adjacency matrix.')
+            print("generate single-normalized adjacency matrix.")
             return norm_adj.tocoo()
 
-        adj_type = self.config['adj_type']
-        if adj_type == 'plain':
+        adj_type = self.config["adj_type"]
+        if adj_type == "plain":
             adj_matrix = adj_mat
-            print('use the plain adjacency matrix')
-        elif adj_type == 'norm':
+            print("use the plain adjacency matrix")
+        elif adj_type == "norm":
             adj_matrix = normalized_adj_single(adj_mat + sp.eye(adj_mat.shape[0]))
-            print('use the normalized adjacency matrix')
-        elif adj_type == 'gcmc':
+            print("use the normalized adjacency matrix")
+        elif adj_type == "gcmc":
             adj_matrix = normalized_adj_single(adj_mat)
-            print('use the gcmc adjacency matrix')
-        elif adj_type == 'pre':
+            print("use the gcmc adjacency matrix")
+        elif adj_type == "pre":
             # pre adjcency matrix
-            rowsum = np.array(adj_mat.sum(1)) + 1e-08    # avoid RuntimeWarning: divide by zero encountered in power
+            rowsum = (
+                np.array(adj_mat.sum(1)) + 1e-08
+            )  # avoid RuntimeWarning: divide by zero encountered in power
             d_inv = np.power(rowsum, -0.5).flatten()
-            d_inv[np.isinf(d_inv)] = 0.
+            d_inv[np.isinf(d_inv)] = 0.0
             d_mat_inv = sp.diags(d_inv)
 
             norm_adj_tmp = d_mat_inv.dot(adj_mat)
             adj_matrix = norm_adj_tmp.dot(d_mat_inv)
-            print('use the pre adjcency matrix')
+            print("use the pre adjcency matrix")
         else:
             mean_adj = normalized_adj_single(adj_mat)
             adj_matrix = mean_adj + sp.eye(mean_adj.shape[0])
-            print('use the mean adjacency matrix')
+            print("use the mean adjacency matrix")
 
         return adj_matrix
-

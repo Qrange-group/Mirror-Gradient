@@ -83,7 +83,7 @@ def map_(pos_index, pos_len):
     actual_len = np.where(pos_len > len_rank, len_rank, pos_len)
     result = np.zeros_like(pos_index, dtype=np.float)
     for row, lens in enumerate(actual_len):
-        ranges = np.arange(1, pos_index.shape[1]+1)
+        ranges = np.arange(1, pos_index.shape[1] + 1)
         ranges[lens:] = ranges[lens - 1]
         result[row] = sum_pre[row] / ranges
     return result.mean(axis=0)
@@ -110,9 +110,9 @@ Useful when we have to serialize evaluation metric names
 and call the functions based on deserialized names
 """
 metrics_dict = {
-    'ndcg': ndcg_,
-    'recall': recall_,
-    'recall2': recall2_,
-    'precision': precision_,
-    'map': map_,
+    "ndcg": ndcg_,
+    "recall": recall_,
+    "recall2": recall2_,
+    "precision": precision_,
+    "map": map_,
 }

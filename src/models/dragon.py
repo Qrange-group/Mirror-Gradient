@@ -23,26 +23,26 @@ class DRAGON(GeneralRecommender):
 
         num_user = self.n_users
         num_item = self.n_items
-        batch_size = config['train_batch_size']  # not used
-        dim_x = config['embedding_size']
-        self.feat_embed_dim = config['feat_embed_dim']
-        self.n_layers = config['n_mm_layers']
-        self.knn_k = config['knn_k']
-        self.mm_image_weight = config['mm_image_weight']
+        batch_size = config["train_batch_size"]  # not used
+        dim_x = config["embedding_size"]
+        self.feat_embed_dim = config["feat_embed_dim"]
+        self.n_layers = config["n_mm_layers"]
+        self.knn_k = config["knn_k"]
+        self.mm_image_weight = config["mm_image_weight"]
         has_id = True
 
         self.batch_size = batch_size
         self.num_user = num_user
         self.num_item = num_item
         self.k = 40
-        self.aggr_mode = config['aggr_mode']
-        self.user_aggr_mode = 'softmax'
+        self.aggr_mode = config["aggr_mode"]
+        self.user_aggr_mode = "softmax"
         self.num_layer = 1
         self.cold_start = 0
         self.dataset = dataset
         # self.construction = 'weighted_max'
-        self.construction = 'cat'
-        self.reg_weight = config['reg_weight']
+        self.construction = "cat"
+        self.reg_weight = config["reg_weight"]
         self.drop_rate = 0.1
         self.v_rep = None
         self.t_rep = None
@@ -54,47 +54,76 @@ class DRAGON(GeneralRecommender):
         self.MLP_t = nn.Linear(self.dim_latent, self.dim_latent, bias=False)
         self.mm_adj = None
 
-        dataset_path = os.path.abspath(config['data_path'] + config['dataset'])
-        self.user_graph_dict = np.load(os.path.join(dataset_path, config['user_graph_dict_file']),
-                                       allow_pickle=True).item()
+        dataset_path = os.path.abspath(config["data_path"] + config["dataset"])
+        self.user_graph_dict = np.load(
+            os.path.join(dataset_path, config["user_graph_dict_file"]),
+            allow_pickle=True,
+        ).item()
 
-        mm_adj_file = os.path.join(dataset_path, 'mm_adj_{}.pt'.format(self.knn_k))
+        mm_adj_file = os.path.join(dataset_path, "mm_adj_{}.pt".format(self.knn_k))
 
         if self.v_feat is not None:
-            self.image_embedding = nn.Embedding.from_pretrained(self.v_feat, freeze=False)
+            self.image_embedding = nn.Embedding.from_pretrained(
+                self.v_feat, freeze=False
+            )
             self.image_trs = nn.Linear(self.v_feat.shape[1], self.feat_embed_dim)
         if self.t_feat is not None:
-            self.text_embedding = nn.Embedding.from_pretrained(self.t_feat, freeze=False)
+            self.text_embedding = nn.Embedding.from_pretrained(
+                self.t_feat, freeze=False
+            )
             self.text_trs = nn.Linear(self.t_feat.shape[1], self.feat_embed_dim)
 
         if os.path.exists(mm_adj_file):
             self.mm_adj = torch.load(mm_adj_file)
         else:
             if self.v_feat is not None:
-                indices, image_adj = self.get_knn_adj_mat(self.image_embedding.weight.detach())
+                indices, image_adj = self.get_knn_adj_mat(
+                    self.image_embedding.weight.detach()
+                )
                 self.mm_adj = image_adj
             if self.t_feat is not None:
-                indices, text_adj = self.get_knn_adj_mat(self.text_embedding.weight.detach())
+                indices, text_adj = self.get_knn_adj_mat(
+                    self.text_embedding.weight.detach()
+                )
                 self.mm_adj = text_adj
             if self.v_feat is not None and self.t_feat is not None:
-                self.mm_adj = self.mm_image_weight * image_adj + (1.0 - self.mm_image_weight) * text_adj
+                self.mm_adj = (
+                    self.mm_image_weight * image_adj
+                    + (1.0 - self.mm_image_weight) * text_adj
+                )
                 del text_adj
                 del image_adj
             torch.save(self.mm_adj, mm_adj_file)
 
         # packing interaction in training into edge_index
-        train_interactions = dataset.inter_matrix(form='coo').astype(np.float32)
+        train_interactions = dataset.inter_matrix(form="coo").astype(np.float32)
         edge_index = self.pack_edge_index(train_interactions)
-        self.edge_index = torch.tensor(edge_index, dtype=torch.long).t().contiguous().to(self.device)
+        self.edge_index = (
+            torch.tensor(edge_index, dtype=torch.long).t().contiguous().to(self.device)
+        )
         self.edge_index = torch.cat((self.edge_index, self.edge_index[[1, 0]]), dim=1)
 
         # pdb.set_trace()
-        self.weight_u = nn.Parameter(nn.init.xavier_normal_(
-            torch.tensor(np.random.randn(self.num_user, 2, 1), dtype=torch.float32, requires_grad=True)))
+        self.weight_u = nn.Parameter(
+            nn.init.xavier_normal_(
+                torch.tensor(
+                    np.random.randn(self.num_user, 2, 1),
+                    dtype=torch.float32,
+                    requires_grad=True,
+                )
+            )
+        )
         self.weight_u.data = F.softmax(self.weight_u, dim=1)
 
-        self.weight_i = nn.Parameter(nn.init.xavier_normal_(
-            torch.tensor(np.random.randn(self.num_item, 2, 1), dtype=torch.float32, requires_grad=True)))
+        self.weight_i = nn.Parameter(
+            nn.init.xavier_normal_(
+                torch.tensor(
+                    np.random.randn(self.num_item, 2, 1),
+                    dtype=torch.float32,
+                    requires_grad=True,
+                )
+            )
+        )
         self.weight_i.data = F.softmax(self.weight_i, dim=1)
 
         self.item_index = torch.zeros([self.num_item], dtype=torch.long)
@@ -107,11 +136,18 @@ class DRAGON(GeneralRecommender):
         self.double_percent = 0
 
         drop_item = torch.tensor(
-            np.random.choice(self.item_index, int(self.num_item * self.drop_percent), replace=False))
-        drop_item_single = drop_item[:int(self.single_percent * len(drop_item))]
+            np.random.choice(
+                self.item_index, int(self.num_item * self.drop_percent), replace=False
+            )
+        )
+        drop_item_single = drop_item[: int(self.single_percent * len(drop_item))]
 
-        self.dropv_node_idx_single = drop_item_single[:int(len(drop_item_single) * 1 / 3)]
-        self.dropt_node_idx_single = drop_item_single[int(len(drop_item_single) * 2 / 3):]
+        self.dropv_node_idx_single = drop_item_single[
+            : int(len(drop_item_single) * 1 / 3)
+        ]
+        self.dropt_node_idx_single = drop_item_single[
+            int(len(drop_item_single) * 2 / 3) :
+        ]
 
         self.dropv_node_idx = self.dropv_node_idx_single
         self.dropt_node_idx = self.dropt_node_idx_single
@@ -124,39 +160,86 @@ class DRAGON(GeneralRecommender):
         for idx, num in enumerate(mask_cnt):
             temp_false = [False] * num
             temp_true = [True] * num
-            mask_dropv.extend(temp_false) if idx in self.dropv_node_idx else mask_dropv.extend(temp_true)
-            mask_dropt.extend(temp_false) if idx in self.dropt_node_idx else mask_dropt.extend(temp_true)
+            (
+                mask_dropv.extend(temp_false)
+                if idx in self.dropv_node_idx
+                else mask_dropv.extend(temp_true)
+            )
+            (
+                mask_dropt.extend(temp_false)
+                if idx in self.dropt_node_idx
+                else mask_dropt.extend(temp_true)
+            )
 
         edge_index = edge_index[np.lexsort(edge_index.T[1, None])]
         edge_index_dropv = edge_index[mask_dropv]
         edge_index_dropt = edge_index[mask_dropt]
 
-        self.edge_index_dropv = torch.tensor(edge_index_dropv).t().contiguous().to(self.device)
-        self.edge_index_dropt = torch.tensor(edge_index_dropt).t().contiguous().to(self.device)
+        self.edge_index_dropv = (
+            torch.tensor(edge_index_dropv).t().contiguous().to(self.device)
+        )
+        self.edge_index_dropt = (
+            torch.tensor(edge_index_dropt).t().contiguous().to(self.device)
+        )
 
-        self.edge_index_dropv = torch.cat((self.edge_index_dropv, self.edge_index_dropv[[1, 0]]), dim=1)
-        self.edge_index_dropt = torch.cat((self.edge_index_dropt, self.edge_index_dropt[[1, 0]]), dim=1)
+        self.edge_index_dropv = torch.cat(
+            (self.edge_index_dropv, self.edge_index_dropv[[1, 0]]), dim=1
+        )
+        self.edge_index_dropt = torch.cat(
+            (self.edge_index_dropt, self.edge_index_dropt[[1, 0]]), dim=1
+        )
 
         self.MLP_user = nn.Linear(self.dim_latent * 2, self.dim_latent)
 
         if self.v_feat is not None:
-            self.v_drop_ze = torch.zeros(len(self.dropv_node_idx), self.v_feat.size(1)).to(self.device)
-            self.v_gcn = GCN(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                             num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                             device=self.device, features=self.v_feat)  # 256)
+            self.v_drop_ze = torch.zeros(
+                len(self.dropv_node_idx), self.v_feat.size(1)
+            ).to(self.device)
+            self.v_gcn = GCN(
+                self.dataset,
+                batch_size,
+                num_user,
+                num_item,
+                dim_x,
+                self.aggr_mode,
+                num_layer=self.num_layer,
+                has_id=has_id,
+                dropout=self.drop_rate,
+                dim_latent=64,
+                device=self.device,
+                features=self.v_feat,
+            )  # 256)
         if self.t_feat is not None:
-            self.t_drop_ze = torch.zeros(len(self.dropt_node_idx), self.t_feat.size(1)).to(self.device)
-            self.t_gcn = GCN(self.dataset, batch_size, num_user, num_item, dim_x, self.aggr_mode,
-                             num_layer=self.num_layer, has_id=has_id, dropout=self.drop_rate, dim_latent=64,
-                             device=self.device, features=self.t_feat)
+            self.t_drop_ze = torch.zeros(
+                len(self.dropt_node_idx), self.t_feat.size(1)
+            ).to(self.device)
+            self.t_gcn = GCN(
+                self.dataset,
+                batch_size,
+                num_user,
+                num_item,
+                dim_x,
+                self.aggr_mode,
+                num_layer=self.num_layer,
+                has_id=has_id,
+                dropout=self.drop_rate,
+                dim_latent=64,
+                device=self.device,
+                features=self.t_feat,
+            )
 
-        self.user_graph = User_Graph_sample(num_user, 'add', self.dim_latent)
+        self.user_graph = User_Graph_sample(num_user, "add", self.dim_latent)
 
         self.result_embed = nn.Parameter(
-            nn.init.xavier_normal_(torch.tensor(np.random.randn(num_user + num_item, dim_x)))).to(self.device)
+            nn.init.xavier_normal_(
+                torch.tensor(np.random.randn(num_user + num_item, dim_x))
+            )
+        ).to(self.device)
 
     def get_knn_adj_mat(self, mm_embeddings):
-        context_norm = mm_embeddings.div(torch.norm(mm_embeddings, p=2, dim=-1, keepdim=True))
+        context_norm = mm_embeddings.div(
+            torch.norm(mm_embeddings, p=2, dim=-1, keepdim=True)
+        )
         sim = torch.mm(context_norm, context_norm.transpose(1, 0))
         _, knn_ind = torch.topk(sim, self.knn_k, dim=-1)
         adj_size = sim.size()
@@ -189,60 +272,77 @@ class DRAGON(GeneralRecommender):
         return np.column_stack((rows, cols))
 
     def forward(self, interaction):
-        user_nodes, pos_item_nodes, neg_item_nodes = interaction[0], interaction[1], interaction[2]
+        user_nodes, pos_item_nodes, neg_item_nodes = (
+            interaction[0],
+            interaction[1],
+            interaction[2],
+        )
         pos_item_nodes += self.n_users
         neg_item_nodes += self.n_users
         representation = None
 
         if self.v_feat is not None:
-            self.v_rep, self.v_preference = self.v_gcn(self.edge_index_dropv, self.edge_index, self.v_feat)
+            self.v_rep, self.v_preference = self.v_gcn(
+                self.edge_index_dropv, self.edge_index, self.v_feat
+            )
             representation = self.v_rep
         if self.t_feat is not None:
-            self.t_rep, self.t_preference = self.t_gcn(self.edge_index_dropt, self.edge_index, self.t_feat)
+            self.t_rep, self.t_preference = self.t_gcn(
+                self.edge_index_dropt, self.edge_index, self.t_feat
+            )
             if representation is None:
                 representation = self.t_rep
             else:
-                if self.construction == 'cat':
+                if self.construction == "cat":
                     representation = torch.cat((self.v_rep, self.t_rep), dim=1)
                 else:
                     representation += self.t_rep
 
-        if self.construction == 'weighted_sum':
+        if self.construction == "weighted_sum":
             if self.v_rep is not None:
                 self.v_rep = torch.unsqueeze(self.v_rep, 2)
-                user_rep = self.v_rep[:self.num_user]
+                user_rep = self.v_rep[: self.num_user]
             if self.t_rep is not None:
                 self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = self.t_rep[:self.num_user]
+                user_rep = self.t_rep[: self.num_user]
             if self.v_rep is not None and self.t_rep is not None:
-                user_rep = torch.matmul(torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2),
-                                        self.weight_u)
+                user_rep = torch.matmul(
+                    torch.cat(
+                        (self.v_rep[: self.num_user], self.t_rep[: self.num_user]),
+                        dim=2,
+                    ),
+                    self.weight_u,
+                )
             user_rep = torch.squeeze(user_rep)
 
-        if self.construction == 'weighted_max':
+        if self.construction == "weighted_max":
             # pdb.set_trace()
             self.v_rep = torch.unsqueeze(self.v_rep, 2)
 
             self.t_rep = torch.unsqueeze(self.t_rep, 2)
 
-            user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
+            user_rep = torch.cat(
+                (self.v_rep[: self.num_user], self.t_rep[: self.num_user]), dim=2
+            )
             user_rep = self.weight_u.transpose(1, 2) * user_rep
             user_rep = torch.max(user_rep, dim=2).values
-        if self.construction == 'cat':
+        if self.construction == "cat":
             # pdb.set_trace()
             if self.v_rep is not None:
-                user_rep = self.v_rep[:self.num_user]
+                user_rep = self.v_rep[: self.num_user]
             if self.t_rep is not None:
-                user_rep = self.t_rep[:self.num_user]
+                user_rep = self.t_rep[: self.num_user]
             if self.v_rep is not None and self.t_rep is not None:
                 self.v_rep = torch.unsqueeze(self.v_rep, 2)
                 self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
+                user_rep = torch.cat(
+                    (self.v_rep[: self.num_user], self.t_rep[: self.num_user]), dim=2
+                )
                 user_rep = self.weight_u.transpose(1, 2) * user_rep
 
                 user_rep = torch.cat((user_rep[:, :, 0], user_rep[:, :, 1]), dim=1)
 
-        item_rep = representation[self.num_user:]
+        item_rep = representation[self.num_user :]
 
         ############################################ multi-modal information aggregation
         h = item_rep
@@ -263,71 +363,92 @@ class DRAGON(GeneralRecommender):
         user = interaction[0]
         pos_scores, neg_scores = self.forward(interaction)
         loss_value = -torch.mean(torch.log2(torch.sigmoid(pos_scores - neg_scores)))
-        reg_embedding_loss_v = (self.v_preference[user] ** 2).mean() if self.v_preference is not None else 0.0
-        reg_embedding_loss_t = (self.t_preference[user] ** 2).mean() if self.t_preference is not None else 0.0
+        reg_embedding_loss_v = (
+            (self.v_preference[user] ** 2).mean()
+            if self.v_preference is not None
+            else 0.0
+        )
+        reg_embedding_loss_t = (
+            (self.t_preference[user] ** 2).mean()
+            if self.t_preference is not None
+            else 0.0
+        )
 
         reg_loss = self.reg_weight * (reg_embedding_loss_v + reg_embedding_loss_t)
-        if self.construction == 'weighted_sum':
-            reg_loss += self.reg_weight * (self.weight_u ** 2).mean()
-            reg_loss += self.reg_weight * (self.weight_i ** 2).mean()
-        elif self.construction == 'cat':
-            reg_loss += self.reg_weight * (self.weight_u ** 2).mean()
-        elif self.construction == 'cat_mlp':
-            reg_loss += self.reg_weight * (self.MLP_user.weight ** 2).mean()
+        if self.construction == "weighted_sum":
+            reg_loss += self.reg_weight * (self.weight_u**2).mean()
+            reg_loss += self.reg_weight * (self.weight_i**2).mean()
+        elif self.construction == "cat":
+            reg_loss += self.reg_weight * (self.weight_u**2).mean()
+        elif self.construction == "cat_mlp":
+            reg_loss += self.reg_weight * (self.MLP_user.weight**2).mean()
         return loss_value + reg_loss
 
     def full_sort_predict(self, interaction):
         representation = None
 
         if self.v_feat is not None:
-            self.v_rep, self.v_preference = self.v_gcn(self.edge_index_dropv, self.edge_index, self.v_feat)
+            self.v_rep, self.v_preference = self.v_gcn(
+                self.edge_index_dropv, self.edge_index, self.v_feat
+            )
             representation = self.v_rep
         if self.t_feat is not None:
-            self.t_rep, self.t_preference = self.t_gcn(self.edge_index_dropt, self.edge_index, self.t_feat)
+            self.t_rep, self.t_preference = self.t_gcn(
+                self.edge_index_dropt, self.edge_index, self.t_feat
+            )
             if representation is None:
                 representation = self.t_rep
             else:
-                if self.construction == 'cat':
+                if self.construction == "cat":
                     representation = torch.cat((self.v_rep, self.t_rep), dim=1)
                 else:
                     representation += self.t_rep
 
-        if self.construction == 'weighted_sum':
+        if self.construction == "weighted_sum":
             if self.v_rep is not None:
                 self.v_rep = torch.unsqueeze(self.v_rep, 2)
-                user_rep = self.v_rep[:self.num_user]
+                user_rep = self.v_rep[: self.num_user]
             if self.t_rep is not None:
                 self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = self.t_rep[:self.num_user]
+                user_rep = self.t_rep[: self.num_user]
             if self.v_rep is not None and self.t_rep is not None:
-                user_rep = torch.matmul(torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2),
-                                        self.weight_u)
+                user_rep = torch.matmul(
+                    torch.cat(
+                        (self.v_rep[: self.num_user], self.t_rep[: self.num_user]),
+                        dim=2,
+                    ),
+                    self.weight_u,
+                )
             user_rep = torch.squeeze(user_rep)
 
-        if self.construction == 'weighted_max':
+        if self.construction == "weighted_max":
             # pdb.set_trace()
             self.v_rep = torch.unsqueeze(self.v_rep, 2)
 
             self.t_rep = torch.unsqueeze(self.t_rep, 2)
 
-            user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
+            user_rep = torch.cat(
+                (self.v_rep[: self.num_user], self.t_rep[: self.num_user]), dim=2
+            )
             user_rep = self.weight_u.transpose(1, 2) * user_rep
             user_rep = torch.max(user_rep, dim=2).values
-        if self.construction == 'cat':
+        if self.construction == "cat":
             # pdb.set_trace()
             if self.v_rep is not None:
-                user_rep = self.v_rep[:self.num_user]
+                user_rep = self.v_rep[: self.num_user]
             if self.t_rep is not None:
-                user_rep = self.t_rep[:self.num_user]
+                user_rep = self.t_rep[: self.num_user]
             if self.v_rep is not None and self.t_rep is not None:
                 self.v_rep = torch.unsqueeze(self.v_rep, 2)
                 self.t_rep = torch.unsqueeze(self.t_rep, 2)
-                user_rep = torch.cat((self.v_rep[:self.num_user], self.t_rep[:self.num_user]), dim=2)
+                user_rep = torch.cat(
+                    (self.v_rep[: self.num_user], self.t_rep[: self.num_user]), dim=2
+                )
                 user_rep = self.weight_u.transpose(1, 2) * user_rep
 
                 user_rep = torch.cat((user_rep[:, :, 0], user_rep[:, :, 1]), dim=1)
 
-        item_rep = representation[self.num_user:]
+        item_rep = representation[self.num_user :]
 
         ############################################ multi-modal information aggregation
         h = item_rep
@@ -337,8 +458,8 @@ class DRAGON(GeneralRecommender):
         user_rep = user_rep + h_u1
         item_rep = item_rep + h
         self.result_embed = torch.cat((user_rep, item_rep), dim=0)
-        user_tensor = self.result_embed[:self.n_users]
-        item_tensor = self.result_embed[self.n_users:]
+        user_tensor = self.result_embed[: self.n_users]
+        item_tensor = self.result_embed[self.n_users :]
 
         temp_user_tensor = user_tensor[interaction[0], :]
         score_matrix = torch.matmul(temp_user_tensor, item_tensor.t())
@@ -366,17 +487,21 @@ class DRAGON(GeneralRecommender):
                     user_graph_weight.append(user_graph_weight[rand_index])
                 user_graph_index.append(user_graph_sample)
 
-                if self.user_aggr_mode == 'softmax':
-                    user_weight_matrix[i] = F.softmax(torch.tensor(user_graph_weight), dim=0)  # softmax
-                if self.user_aggr_mode == 'mean':
+                if self.user_aggr_mode == "softmax":
+                    user_weight_matrix[i] = F.softmax(
+                        torch.tensor(user_graph_weight), dim=0
+                    )  # softmax
+                if self.user_aggr_mode == "mean":
                     user_weight_matrix[i] = torch.ones(k) / k  # mean
                 continue
             user_graph_sample = self.user_graph_dict[i][0][:k]
             user_graph_weight = self.user_graph_dict[i][1][:k]
 
-            if self.user_aggr_mode == 'softmax':
-                user_weight_matrix[i] = F.softmax(torch.tensor(user_graph_weight), dim=0)  # softmax
-            if self.user_aggr_mode == 'mean':
+            if self.user_aggr_mode == "softmax":
+                user_weight_matrix[i] = F.softmax(
+                    torch.tensor(user_graph_weight), dim=0
+                )  # softmax
+            if self.user_aggr_mode == "mean":
                 user_weight_matrix[i] = torch.ones(k) / k  # mean
             user_graph_index.append(user_graph_sample)
 
@@ -402,8 +527,21 @@ class User_Graph_sample(torch.nn.Module):
 
 
 class GCN(torch.nn.Module):
-    def __init__(self, datasets, batch_size, num_user, num_item, dim_id, aggr_mode, num_layer, has_id, dropout,
-                 dim_latent=None, device=None, features=None):
+    def __init__(
+        self,
+        datasets,
+        batch_size,
+        num_user,
+        num_item,
+        dim_id,
+        aggr_mode,
+        num_layer,
+        has_id,
+        dropout,
+        dim_latent=None,
+        device=None,
+        features=None,
+    ):
         super(GCN, self).__init__()
         self.batch_size = batch_size
         self.num_user = num_user
@@ -419,21 +557,43 @@ class GCN(torch.nn.Module):
         self.device = device
 
         if self.dim_latent:
-            self.preference = nn.Parameter(nn.init.xavier_normal_(torch.tensor(
-                np.random.randn(num_user, self.dim_latent), dtype=torch.float32, requires_grad=True),
-                gain=1).to(self.device))
+            self.preference = nn.Parameter(
+                nn.init.xavier_normal_(
+                    torch.tensor(
+                        np.random.randn(num_user, self.dim_latent),
+                        dtype=torch.float32,
+                        requires_grad=True,
+                    ),
+                    gain=1,
+                ).to(self.device)
+            )
             self.MLP = nn.Linear(self.dim_feat, 4 * self.dim_latent)
             self.MLP_1 = nn.Linear(4 * self.dim_latent, self.dim_latent)
-            self.conv_embed_1 = Base_gcn(self.dim_latent, self.dim_latent, aggr=self.aggr_mode)
+            self.conv_embed_1 = Base_gcn(
+                self.dim_latent, self.dim_latent, aggr=self.aggr_mode
+            )
 
         else:
-            self.preference = nn.Parameter(nn.init.xavier_normal_(torch.tensor(
-                np.random.randn(num_user, self.dim_feat), dtype=torch.float32, requires_grad=True),
-                gain=1).to(self.device))
-            self.conv_embed_1 = Base_gcn(self.dim_latent, self.dim_latent, aggr=self.aggr_mode)
+            self.preference = nn.Parameter(
+                nn.init.xavier_normal_(
+                    torch.tensor(
+                        np.random.randn(num_user, self.dim_feat),
+                        dtype=torch.float32,
+                        requires_grad=True,
+                    ),
+                    gain=1,
+                ).to(self.device)
+            )
+            self.conv_embed_1 = Base_gcn(
+                self.dim_latent, self.dim_latent, aggr=self.aggr_mode
+            )
 
     def forward(self, edge_index_drop, edge_index, features):
-        temp_features = self.MLP_1(F.leaky_relu(self.MLP(features))) if self.dim_latent else features
+        temp_features = (
+            self.MLP_1(F.leaky_relu(self.MLP(features)))
+            if self.dim_latent
+            else features
+        )
         x = torch.cat((self.preference, temp_features), dim=0).to(self.device)
         x = F.normalize(x).to(self.device)
         h = self.conv_embed_1(x, edge_index)  # equation 1
@@ -444,7 +604,9 @@ class GCN(torch.nn.Module):
 
 
 class Base_gcn(MessagePassing):
-    def __init__(self, in_channels, out_channels, normalize=True, bias=True, aggr='add', **kwargs):
+    def __init__(
+        self, in_channels, out_channels, normalize=True, bias=True, aggr="add", **kwargs
+    ):
         super(Base_gcn, self).__init__(aggr=aggr, **kwargs)
         self.aggr = aggr
         self.in_channels = in_channels
@@ -460,7 +622,7 @@ class Base_gcn(MessagePassing):
         return self.propagate(edge_index, size=(x.size(0), x.size(0)), x=x)
 
     def message(self, x_j, edge_index, size):
-        if self.aggr == 'add':
+        if self.aggr == "add":
             # pdb.set_trace()
             row, col = edge_index
             deg = degree(row, size[0], dtype=x_j.dtype)
@@ -473,6 +635,6 @@ class Base_gcn(MessagePassing):
         return aggr_out
 
     def __repr(self):
-        return '{}({},{})'.format(self.__class__.__name__, self.in_channels, self.out_channels)
-
-
+        return "{}({},{})".format(
+            self.__class__.__name__, self.in_channels, self.out_channels
+        )

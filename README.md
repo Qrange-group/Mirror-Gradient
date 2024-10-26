@@ -14,11 +14,6 @@ Multimodal recommender systems utilize various types of information, such as tex
 <p align="center" style="font-size:6px;">
   <img src="images/algorithm.jpg" width="60%">
 </p>
-<!-- <p align="center" style="font-size:6px;">
-  <img src="images/case.png" width="60%">
-  <br>
-  An illustrative example of multimodal risks. Merchants add popular tags (e.g., "ins style") and broad keywords (e.g., "suit") to the text of the bodysuit to increase the likelihood of the item being recommended. At the same time, merchants dynamically change the item's visual features in real-time due to Women's Day marketing campaigns and the emphasis on the superiority of the item's material. These actions make it difficult for the recommender system to accurately determine the target user for the current item, leading to incorrect recommendations for young girls.
-</p> -->
 
 
 
@@ -68,13 +63,6 @@ python main.py --model LayerGCN --dataset sports
 If you don't want to use MG during training, please use `--not_mg`. For example, 
 ```sh
 python main.py --not_mg
-```
-
-(5) Analyze logs.
-
-The training logs are saved in `src/logs`, and the log file name of models trained with MG has the logo of `mg`. You can run the following code and get the best result of each log file in `src/analysis.txt`. 
-```sh
-python analysis.py
 ```
 
 ## 🌻 Supported Models and Datasets
@@ -136,10 +124,11 @@ python main.py --model DRAGON --dataset sports --resume DRAGON-sports.pth
 ## 🌸 Citation
 
 ```
-@article{zhong2024mirror,
+@inproceedings{zhong2024mirror,
   title={Mirror Gradient: Towards Robust Multimodal Recommender Systems via Exploring Flat Local Minima},
-  author={Zhong, Shanshan and Huang, Zhongzhan and Li, Daifeng and Wen, Weushao and Qin, Jinghui and Lin, Liang},
-  journal={arXiv preprint arXiv:2402.11262},
+  author={Zhong, Shanshan and Huang, Zhongzhan and Li, Daifeng and Wen, Wushao and Qin, Jinghui and Lin, Liang},
+  booktitle={Proceedings of the ACM on Web Conference 2024},
+  pages={3700--3711},
   year={2024}
 }
 ```

@@ -12,7 +12,8 @@ import numpy as np
 
 
 class NoOp(object):
-    """ useful for distributed training No-Ops """
+    """useful for distributed training No-Ops"""
+
     def __getattr__(self, name):
         return self.noop
 

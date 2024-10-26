@@ -9,13 +9,14 @@ from torch.nn.modules.utils import _quadruple
 import numbers
 import numpy as np
 from PIL import Image
+
 _pil_interpolation_to_str = {
-    Image.NEAREST: 'PIL.Image.NEAREST',
-    Image.BILINEAR: 'PIL.Image.BILINEAR',
-    Image.BICUBIC: 'PIL.Image.BICUBIC',
-    Image.LANCZOS: 'PIL.Image.LANCZOS',
-    Image.HAMMING: 'PIL.Image.HAMMING',
-    Image.BOX: 'PIL.Image.BOX',
+    Image.NEAREST: "PIL.Image.NEAREST",
+    Image.BILINEAR: "PIL.Image.BILINEAR",
+    Image.BICUBIC: "PIL.Image.BICUBIC",
+    Image.LANCZOS: "PIL.Image.LANCZOS",
+    Image.HAMMING: "PIL.Image.HAMMING",
+    Image.BOX: "PIL.Image.BOX",
 }
 
 
@@ -24,9 +25,8 @@ def flat_list_of_lists(l):
     return [item for sublist in l for item in sublist]
 
 
-def mask_batch_text_tokens(
-        inputs, tokenizer, mlm_probability=0.15, is_train=True):
-    """ modified from transformers.data.data_collator
+def mask_batch_text_tokens(inputs, tokenizer, mlm_probability=0.15, is_train=True):
+    """modified from transformers.data.data_collator
     Args:
         inputs: (B, L), 2D torch.Tensor, does not work for 1D. It has already been padded.
         tokenizer:
@@ -44,11 +44,12 @@ def mask_batch_text_tokens(
     # (with probability args.mlm_probability defaults to 0.15 in Bert/RoBERTa)
     probability_matrix = torch.full(labels.shape, mlm_probability)
     special_tokens_mask = [
-        tokenizer.get_special_tokens_mask(
-            val, already_has_special_tokens=True) for val in labels.tolist()
+        tokenizer.get_special_tokens_mask(val, already_has_special_tokens=True)
+        for val in labels.tolist()
     ]
-    probability_matrix.masked_fill_(torch.tensor(
-        special_tokens_mask, dtype=torch.bool), value=0.0)
+    probability_matrix.masked_fill_(
+        torch.tensor(special_tokens_mask, dtype=torch.bool), value=0.0
+    )
     if tokenizer._pad_token is not None:
         padding_mask = labels.eq(tokenizer.pad_token_id)
         probability_matrix.masked_fill_(padding_mask, value=0.0)
@@ -56,18 +57,20 @@ def mask_batch_text_tokens(
     labels[~masked_indices] = -100  # We only compute loss on masked tokens
 
     # 80% of the time, we replace masked input tokens with tokenizer.mask_token ([MASK])
-    indices_replaced = torch.bernoulli(
-        torch.full(labels.shape, 0.8)).bool() & masked_indices
-    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(
-        tokenizer.mask_token)
+    indices_replaced = (
+        torch.bernoulli(torch.full(labels.shape, 0.8)).bool() & masked_indices
+    )
+    inputs[indices_replaced] = tokenizer.convert_tokens_to_ids(tokenizer.mask_token)
 
     # 10% of the time, we replace masked input tokens with random word
-    indices_random = torch.bernoulli(
-        torch.full(labels.shape, 0.5)
-        ).bool() & masked_indices & ~indices_replaced
+    indices_random = (
+        torch.bernoulli(torch.full(labels.shape, 0.5)).bool()
+        & masked_indices
+        & ~indices_replaced
+    )
     random_words = torch.randint(
-        len(tokenizer), labels.shape,
-        dtype=torch.long)  # len(tokenizer) == #vocab
+        len(tokenizer), labels.shape, dtype=torch.long
+    )  # len(tokenizer) == #vocab
     inputs[indices_random] = random_words[indices_random]
 
     # The rest of the time (10% of the time) we keep the masked input tokens unchanged
@@ -86,12 +89,12 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
             :math:`(C, H, W)` otherwise.
     """
     if not isinstance(image, (np.ndarray,)):
-        raise TypeError("Input type must be a numpy.ndarray. Got {}".format(
-            type(image)))
+        raise TypeError(
+            "Input type must be a numpy.ndarray. Got {}".format(type(image))
+        )
 
     if len(image.shape) > 4 or len(image.shape) < 2:
-        raise ValueError(
-            "Input size must be a two, three or four dimensional array")
+        raise ValueError("Input size must be a two, three or four dimensional array")
 
     input_shape = image.shape
     tensor: torch.Tensor = torch.from_numpy(image)
@@ -107,8 +110,7 @@ def image_to_tensor(image: np.ndarray, keepdim: bool = True) -> torch.Tensor:
         tensor = tensor.permute(0, 3, 1, 2)
         keepdim = True  # no need to unsqueeze
     else:
-        raise ValueError(
-            "Cannot process image with shape {}".format(input_shape))
+        raise ValueError("Cannot process image with shape {}".format(input_shape))
 
     return tensor.unsqueeze(0) if not keepdim else tensor
 
@@ -123,10 +125,10 @@ def get_padding(image, max_w, max_h, pad_all=False):
     if pad_all:
         h_padding /= 2
         v_padding /= 2
-        l_pad = h_padding if h_padding % 1 == 0 else h_padding+0.5
-        t_pad = v_padding if v_padding % 1 == 0 else v_padding+0.5
-        r_pad = h_padding if h_padding % 1 == 0 else h_padding-0.5
-        b_pad = v_padding if v_padding % 1 == 0 else v_padding-0.5
+        l_pad = h_padding if h_padding % 1 == 0 else h_padding + 0.5
+        t_pad = v_padding if v_padding % 1 == 0 else v_padding + 0.5
+        r_pad = h_padding if h_padding % 1 == 0 else h_padding - 0.5
+        b_pad = v_padding if v_padding % 1 == 0 else v_padding - 0.5
     else:
         l_pad, t_pad = 0, 0
         r_pad, b_pad = h_padding, v_padding
@@ -138,9 +140,9 @@ def get_padding(image, max_w, max_h, pad_all=False):
 
 
 class ImagePad(object):
-    def __init__(self, max_w, max_h, fill=0, padding_mode='constant'):
+    def __init__(self, max_w, max_h, fill=0, padding_mode="constant"):
         assert isinstance(fill, (numbers.Number, str, tuple))
-        assert padding_mode in ['constant', 'edge', 'reflect', 'symmetric']
+        assert padding_mode in ["constant", "edge", "reflect", "symmetric"]
         self.max_w = max_w
         self.max_h = max_h
         self.fill = fill
@@ -156,16 +158,18 @@ class ImagePad(object):
         """
         if isinstance(img, torch.Tensor):
             paddings = _quadruple(get_padding(img, self.max_w, self.max_h))
-            return img_tensor_pad(
-                img, paddings,
-                self.padding_mode, self.fill)
+            return img_tensor_pad(img, paddings, self.padding_mode, self.fill)
         return img_pad(
-            img, get_padding(img, self.max_w, self.max_h),
-            self.fill, self.padding_mode)
+            img, get_padding(img, self.max_w, self.max_h), self.fill, self.padding_mode
+        )
 
     def __repr__(self):
-        return self.__class__.__name__ + '(padding={0}, fill={1}, padding_mode={2})'.\
-            format(self.fill, self.padding_mode)
+        return (
+            self.__class__.__name__
+            + "(padding={0}, fill={1}, padding_mode={2})".format(
+                self.fill, self.padding_mode
+            )
+        )
 
 
 def get_resize_size(image, max_size):
@@ -192,11 +196,11 @@ def get_resize_size(image, max_size):
         width, height = image.size
 
     if height >= width:
-        ratio = width*1./height
+        ratio = width * 1.0 / height
         new_height = max_size
         new_width = new_height * ratio
     else:
-        ratio = height*1./width
+        ratio = height * 1.0 / width
         new_width = max_size
         new_height = new_width * ratio
     size = (int(new_height), int(new_width))
@@ -232,15 +236,18 @@ class ImageResize(object):
         if isinstance(img, torch.Tensor):
             assert isinstance(self.interpolation, str)
             return img_tensor_resize(
-                img, size=get_resize_size(img, self.max_size),
-                mode=self.interpolation, align_corners=False)
-        return img_resize(
-            img, get_resize_size(img, self.max_size), self.interpolation)
+                img,
+                size=get_resize_size(img, self.max_size),
+                mode=self.interpolation,
+                align_corners=False,
+            )
+        return img_resize(img, get_resize_size(img, self.max_size), self.interpolation)
 
     def __repr__(self):
         interpolate_str = _pil_interpolation_to_str[self.interpolation]
-        return self.__class__.__name__ + '(size={0}, interpolation={1})'.format(
-            self.size, interpolate_str)
+        return self.__class__.__name__ + "(size={0}, interpolation={1})".format(
+            self.size, interpolate_str
+        )
 
 
 def get_imagenet_transform(min_size=600, max_size=1000):
@@ -249,17 +256,24 @@ def get_imagenet_transform(min_size=600, max_size=1000):
     """
     if min_size != 600:
         import warnings
-        warnings.warn(f'Warning: min_size is not used in image transform, '
-                      f'setting min_size will have no effect.')
-    return transforms.Compose([
-        ImageResize(max_size, Image.BILINEAR),  # longer side will be resized to 1000
-        ImagePad(max_size, max_size),  # pad to 1000 * 1000
-    ])
+
+        warnings.warn(
+            f"Warning: min_size is not used in image transform, "
+            f"setting min_size will have no effect."
+        )
+    return transforms.Compose(
+        [
+            ImageResize(
+                max_size, Image.BILINEAR
+            ),  # longer side will be resized to 1000
+            ImagePad(max_size, max_size),  # pad to 1000 * 1000
+        ]
+    )
 
 
 class ImageNorm(object):
-    """Apply Normalization to Image Pixels on GPU
-    """
+    """Apply Normalization to Image Pixels on GPU"""
+
     def __init__(self, mean, std):
         self.mean = torch.tensor(mean).cuda().view(1, 1, 3, 1, 1)
         self.std = torch.tensor(std).cuda().view(1, 1, 3, 1, 1)
@@ -276,7 +290,7 @@ class ImageNorm(object):
             img: normalized float image tensors
         """
         if torch.max(img) > 1 and self.mean.max() <= 1:
-            img.div_(255.)
+            img.div_(255.0)
         return img.sub_(self.mean).div_(self.std)
 
 
@@ -304,13 +318,17 @@ def chunk_list(examples, chunk_size=2, pad_to_divisible=True):
     n_chunks = int(n_examples / chunk_size)
     n_chunks = n_chunks + 1 if remainder > 0 else n_chunks
     for i in range(n_chunks):
-        chunked_examples.append(examples[i*chunk_size: (i+1)*chunk_size])
+        chunked_examples.append(examples[i * chunk_size : (i + 1) * chunk_size])
     return chunked_examples
 
 
-def mk_input_group(key_grouped_examples, max_n_example_per_group=2, is_train=True,
-                   example_unique_key=None):
-    """ Re-organize examples into groups. Each input group will have a single image paired
+def mk_input_group(
+    key_grouped_examples,
+    max_n_example_per_group=2,
+    is_train=True,
+    example_unique_key=None,
+):
+    """Re-organize examples into groups. Each input group will have a single image paired
     with X (X=max_n_example_per_img) examples. Images with total #examples > X will be
     split into multiple groups. In the case a group has < X examples, we will copy
     the examples to make the group has X examples.
@@ -326,27 +344,34 @@ def mk_input_group(key_grouped_examples, max_n_example_per_group=2, is_train=Tru
     """
     input_groups = []  # each element is (id, list(example))
     for k, examples in key_grouped_examples.items():
-        chunked_examples = chunk_list(examples,
-                                      chunk_size=max_n_example_per_group,
-                                      pad_to_divisible=is_train)
+        chunked_examples = chunk_list(
+            examples, chunk_size=max_n_example_per_group, pad_to_divisible=is_train
+        )
         for c in chunked_examples:
             # if len(c) == 0:
             #     continue
             input_groups.append((k, c))
 
     if example_unique_key is not None:
-        print(f"Using example_unique_key {example_unique_key} to check whether input and output ids m")
+        print(
+            f"Using example_unique_key {example_unique_key} to check whether input and output ids m"
+        )
         # sanity check: make sure we did not discard any input example by accident.
         input_question_ids = flat_list_of_lists(
-            [[sub_e[example_unique_key] for sub_e in e] for e in key_grouped_examples.values()])
+            [
+                [sub_e[example_unique_key] for sub_e in e]
+                for e in key_grouped_examples.values()
+            ]
+        )
         output_question_ids = flat_list_of_lists(
-            [[sub_e[example_unique_key] for sub_e in e[1]] for e in input_groups])
+            [[sub_e[example_unique_key] for sub_e in e[1]] for e in input_groups]
+        )
         assert set(input_question_ids) == set(output_question_ids), "You are missing "
     return input_groups
 
 
 def repeat_tensor_rows(raw_tensor, row_repeats):
-    """ repeat raw_tensor[i] row_repeats[i] times.
+    """repeat raw_tensor[i] row_repeats[i] times.
     Args:
         raw_tensor: (B, *)
         row_repeats: list(int), len(row_repeats) == len(raw_tensor)
@@ -361,9 +386,10 @@ def repeat_tensor_rows(raw_tensor, row_repeats):
         return raw_tensor.index_select(0, indices)
 
 
-
 #### Data utils
 import io
+
+
 def load_decompress_img_from_lmdb_value(lmdb_value):
     """
     Args:
@@ -377,4 +403,3 @@ def load_decompress_img_from_lmdb_value(lmdb_value):
     io_stream = io.BytesIO(lmdb_value)
     img = Image.open(io_stream, mode="r")
     return img
-

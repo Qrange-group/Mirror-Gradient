@@ -12,13 +12,12 @@ class LightGCN_Encoder(GeneralRecommender):
     def __init__(self, config, dataset):
         super(LightGCN_Encoder, self).__init__(config, dataset)
         # load dataset info
-        self.interaction_matrix = dataset.inter_matrix(
-            form='coo').astype(np.float32)
+        self.interaction_matrix = dataset.inter_matrix(form="coo").astype(np.float32)
 
         self.user_count = self.n_users
         self.item_count = self.n_items
-        self.latent_size = config['embedding_size']
-        self.n_layers = 3 if config['n_layers'] is None else config['n_layers']
+        self.latent_size = config["embedding_size"]
+        self.n_layers = 3 if config["n_layers"] is None else config["n_layers"]
         self.layers = [self.latent_size] * self.n_layers
 
         self.drop_ratio = 1.0
@@ -29,10 +28,16 @@ class LightGCN_Encoder(GeneralRecommender):
 
     def _init_model(self):
         initializer = nn.init.xavier_uniform_
-        embedding_dict = nn.ParameterDict({
-            'user_emb': nn.Parameter(initializer(torch.empty(self.user_count, self.latent_size))),
-            'item_emb': nn.Parameter(initializer(torch.empty(self.item_count, self.latent_size)))
-        })
+        embedding_dict = nn.ParameterDict(
+            {
+                "user_emb": nn.Parameter(
+                    initializer(torch.empty(self.user_count, self.latent_size))
+                ),
+                "item_emb": nn.Parameter(
+                    initializer(torch.empty(self.item_count, self.latent_size))
+                ),
+            }
+        )
 
         return embedding_dict
 
@@ -49,14 +54,22 @@ class LightGCN_Encoder(GeneralRecommender):
             Sparse tensor of the normalized interaction matrix.
         """
         # build adj matrix
-        A = sp.dok_matrix((self.n_users + self.n_items,
-                           self.n_users + self.n_items), dtype=np.float32)
+        A = sp.dok_matrix(
+            (self.n_users + self.n_items, self.n_users + self.n_items), dtype=np.float32
+        )
         inter_M = self.interaction_matrix
         inter_M_t = self.interaction_matrix.transpose()
-        data_dict = dict(zip(zip(inter_M.row, inter_M.col+self.n_users),
-                             [1]*inter_M.nnz))
-        data_dict.update(dict(zip(zip(inter_M_t.row+self.n_users, inter_M_t.col),
-                                  [1]*inter_M_t.nnz)))
+        data_dict = dict(
+            zip(zip(inter_M.row, inter_M.col + self.n_users), [1] * inter_M.nnz)
+        )
+        data_dict.update(
+            dict(
+                zip(
+                    zip(inter_M_t.row + self.n_users, inter_M_t.col),
+                    [1] * inter_M_t.nnz,
+                )
+            )
+        )
         A._update(data_dict)
         # norm adj matrix
         sumArr = (A > 0).sum(axis=1)
@@ -85,14 +98,22 @@ class LightGCN_Encoder(GeneralRecommender):
         v = v[dropout_mask]
 
         out = torch.sparse.FloatTensor(i, v, x.shape).to(self.device)
-        return out * (1. / (1 - rate))
+        return out * (1.0 / (1 - rate))
 
     def forward(self, inputs):
-        A_hat = self.sparse_dropout(self.sparse_norm_adj,
-                                    np.random.random() * self.drop_ratio,
-                                    self.sparse_norm_adj._nnz()) if self.drop_flag else self.sparse_norm_adj
+        A_hat = (
+            self.sparse_dropout(
+                self.sparse_norm_adj,
+                np.random.random() * self.drop_ratio,
+                self.sparse_norm_adj._nnz(),
+            )
+            if self.drop_flag
+            else self.sparse_norm_adj
+        )
 
-        ego_embeddings = torch.cat([self.embedding_dict['user_emb'], self.embedding_dict['item_emb']], 0)
+        ego_embeddings = torch.cat(
+            [self.embedding_dict["user_emb"], self.embedding_dict["item_emb"]], 0
+        )
         all_embeddings = [ego_embeddings]
 
         for k in range(len(self.layers)):
@@ -102,8 +123,8 @@ class LightGCN_Encoder(GeneralRecommender):
         all_embeddings = torch.stack(all_embeddings, dim=1)
         all_embeddings = torch.mean(all_embeddings, dim=1)
 
-        user_all_embeddings = all_embeddings[:self.user_count, :]
-        item_all_embeddings = all_embeddings[self.user_count:, :]
+        user_all_embeddings = all_embeddings[: self.user_count, :]
+        item_all_embeddings = all_embeddings[self.user_count :, :]
 
         users, items = inputs[0], inputs[1]
         user_embeddings = user_all_embeddings[users, :]
@@ -115,7 +136,9 @@ class LightGCN_Encoder(GeneralRecommender):
     def get_embedding(self):
         A_hat = self.sparse_norm_adj
 
-        ego_embeddings = torch.cat([self.embedding_dict['user_emb'], self.embedding_dict['item_emb']], 0)
+        ego_embeddings = torch.cat(
+            [self.embedding_dict["user_emb"], self.embedding_dict["item_emb"]], 0
+        )
         all_embeddings = [ego_embeddings]
 
         for k in range(len(self.layers)):
@@ -125,7 +148,7 @@ class LightGCN_Encoder(GeneralRecommender):
         all_embeddings = torch.stack(all_embeddings, dim=1)
         all_embeddings = torch.mean(all_embeddings, dim=1)
 
-        user_all_embeddings = all_embeddings[:self.user_count, :]
-        item_all_embeddings = all_embeddings[self.user_count:, :]
+        user_all_embeddings = all_embeddings[: self.user_count, :]
+        item_all_embeddings = all_embeddings[self.user_count :, :]
 
         return user_all_embeddings, item_all_embeddings
